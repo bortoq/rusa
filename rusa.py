@@ -379,7 +379,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
         base = os.path.splitext(video)[0]
         # Try external .srt files matching the target language
         if target_lang:
-            for ext in [f".{target_lang}.srt", f".{target_lang[:2]}.srt", ".srt"]:
+            for ext in [f".{target_lang}.srt", f".{target_lang[:2]}.srt"]:
                 cand = base + ext
                 if os.path.isfile(cand):
                     shutil.copy2(cand, dest)
@@ -782,6 +782,49 @@ def _check_ffmpeg_codec(codec: str) -> bool:
         return False
     return codec in r.stdout
 
+
+def _subtitle_copy_not_supported(err_text: str, output: str) -> bool:
+    """Detect subtitle/container mismatch worth retrying with text subtitles."""
+    lower = err_text.lower()
+    return output.lower().endswith(".mkv") and "subtitle codec" in lower and "not supported" in lower
+
+
+def _build_video_mux_cmd(
+    video: str,
+    source_audio: str,
+    output: str,
+    ffmpeg_codec: str,
+    bitrate_arg: str,
+    voiceover_lang: str,
+    subtitle_mode: str,
+) -> list[str]:
+    """Build ffmpeg command for final video mux."""
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-i", video,
+        "-i", source_audio,
+        "-map", "0:v",
+        "-map", "0:a:0",
+        "-map", "1:a",
+    ]
+    if subtitle_mode != "drop":
+        cmd.extend(["-map", "0:s?"])
+    cmd.extend([
+        "-c:v", "copy",
+        "-c:a:0", "copy",
+        "-c:a:1", ffmpeg_codec, "-b:a:1", bitrate_arg,
+    ])
+    if subtitle_mode != "drop":
+        cmd.extend(["-c:s", subtitle_mode])
+    cmd.extend([
+        "-disposition:a:0", "none",
+        "-disposition:a:1", "default",
+        "-metadata:s:a:1", f"language={voiceover_lang}",
+        "-metadata:s:a:1", "title=Voiceover",
+        output,
+    ])
+    return cmd
+
 def _run_loudnorm(in_wav: str, out_wav: str) -> bool:
     """Two-pass EBU R128 loudnorm."""
     # Pass 1: measure
@@ -902,10 +945,11 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
         for alt_name in CODEC_MAP:
             if alt_name == audio_fmt:
                 continue
-            alt_codec, alt_bitrate_default, _ = CODEC_MAP[alt_name]
             alt_codec_name = CODEC_MAP[alt_name][0]
+            alt_bitrate_default = CODEC_MAP[alt_name][3]
             if _check_ffmpeg_codec(alt_codec_name):
                 alt_suggestions.append(f"--{alt_name} {alt_bitrate_default}")
+        suggestions = ", ".join(alt_suggestions) if alt_suggestions else "нет известных альтернатив"
         msg = (
             f"\u041a\u043e\u0434\u0435\u043a {ffmpeg_codec} \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0432 \u0432\u0430\u0448\u0435\u0439 \u0441\u0431\u043e\u0440\u043a\u0435 ffmpeg.\n"
             f"\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0434\u0440\u0443\u0433\u043e\u0439 \u0444\u043e\u0440\u043c\u0430\u0442: {suggestions}"
@@ -933,48 +977,34 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
         if not output:
             base = os.path.splitext(os.path.basename(video))[0]
             output = os.path.join(os.path.dirname(video), f"{base}_dubbed.mkv")
-        # If normalized, inject back into container
-        if norm_applied:
-            # Replace the voiceover track with normalized version
+        subtitle_modes = ["copy", "srt", "drop"]
+        last_err_text = ""
+        for subtitle_mode in subtitle_modes:
             rc = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error",
-                 "-i", video,
-                 "-i", norm_out,
-                 "-map", "0:v",
-                 "-map", "0:a:0",
-                 "-map", "1:a",
-                 "-map", "0:s?",
-                 "-c:v", "copy",
-                 "-c:a:0", "copy",
-                 "-c:a:1", ffmpeg_codec, "-b:a:1", bitrate_arg,
-                 "-c:s", "copy",
-                 "-disposition:a:0", "none",
-                 "-disposition:a:1", "default",
-                 "-metadata:s:a:1", f"language={voiceover_lang}",
-                 "-metadata:s:a:1", "title=Voiceover",
-                 output],
-                check=False, capture_output=True
+                _build_video_mux_cmd(
+                    video,
+                    source,
+                    output,
+                    ffmpeg_codec,
+                    bitrate_arg,
+                    voiceover_lang,
+                    subtitle_mode,
+                ),
+                check=False,
+                capture_output=True,
             )
+            if rc.returncode == 0:
+                break
+            last_err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
+            if subtitle_mode == "copy" and _subtitle_copy_not_supported(last_err_text, output):
+                warn("Копирование субтитров в этот контейнер не поддерживается, пробую перекодировать их в SRT")
+                continue
+            if subtitle_mode == "srt":
+                warn("Не удалось сохранить субтитры в выходном контейнере, пробую сохранить файл без них")
+                continue
+            break
         else:
-            rc = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error",
-                 "-i", video,
-                 "-i", source,
-                 "-map", "0:v",
-                 "-map", "0:a:0",
-                 "-map", "1:a",
-                 "-map", "0:s?",
-                 "-c:v", "copy",
-                 "-c:a:0", "copy",
-                 "-c:a:1", ffmpeg_codec, "-b:a:1", bitrate_arg,
-                 "-c:s", "copy",
-                 "-disposition:a:0", "none",
-                 "-disposition:a:1", "default",
-                 "-metadata:s:a:1", f"language={voiceover_lang}",
-                 "-metadata:s:a:1", "title=Voiceover",
-                 output],
-                check=False, capture_output=True
-            )
+            rc = subprocess.CompletedProcess([], 1, stderr=last_err_text.encode("utf-8"))
 
     if rc.returncode != 0:
         err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
@@ -1038,6 +1068,7 @@ def main() -> None:
     # \u0410\u0443\u0434\u0438\u043e\u0444\u043e\u0440\u043c\u0430\u0442
     audio_fmt = "opus"
     audio_bitrate = "64"
+    normalize = args.normalize
     for candidate in ("aac", "mp3", "opus", "ac3"):
         val = getattr(args, candidate, None)
         if val is not None:
@@ -1045,13 +1076,15 @@ def main() -> None:
             audio_bitrate = val
             break
 
-    # Голос: пока DEFAULT, уточним после получения субтитров
-        normalize = args.normalize
-
     # Determine target subtitle language and voice BEFORE info line
     target_lang = None
     if args.lang:
         target_lang = normalize_lang_code(args.lang)
+        if target_lang not in LANG_VOICE_MAP and not args.voice:
+            die(
+                f"Язык '{args.lang}' не поддерживается для авто-выбора голоса. "
+                "Укажите --voice явно."
+            )
         info(f"Язык субтитров: {target_lang}")
     elif args.voice:
         target_lang = voice_to_lang_code(args.voice)
@@ -1122,7 +1155,7 @@ def main() -> None:
         step_mix_output(video, voiceover_wav, args.orig_vol, args.tts_vol,
                         output, tmpdir,
                         audio_fmt, audio_bitrate,
-                        args.normalize, args.audio_only,
+                        normalize, args.audio_only,
                         voiceover_lang)
     finally:
         if not args.keep_temp:

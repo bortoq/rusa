@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generate test video + subtitle fixtures for regression testing."""
-import os, sys, subprocess, tempfile, re, textwrap
+"""Generate deterministic offline fixtures for regression testing."""
+import os, subprocess
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
@@ -35,24 +35,21 @@ RU_LINES = [l.strip() for l in RU_TEXT.strip().split("\n") if l.strip()]
 
 assert len(EN_LINES) == len(RU_LINES), "EN and RU must have same number of lines"
 
-def generate_audio(text: str, voice: str, output_path: str) -> None:
-    """Generate TTS audio with edge-tts."""
-    print(f"  Generating {output_path} ({voice})...")
-    rc = subprocess.run(
-        ["edge-tts", "--voice", voice, "--text", text, "--write-media", output_path],
-        capture_output=True, timeout=180, check=False
+def generate_audio(text: str, output_path: str, freq: int) -> None:
+    """Generate deterministic offline audio without network TTS."""
+    print(f"  Generating {output_path} (offline tone {freq}Hz)...")
+    dur_s = max(len(text) / 55.0, 12.0)
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "lavfi", "-i", f"sine=frequency={freq}:duration={dur_s}",
+            "-ac", "1", "-ar", "16000",
+            "-c:a", "mp3",
+            output_path,
+        ],
+        check=True,
+        capture_output=True,
     )
-    if rc.returncode != 0:
-        err = rc.stderr.decode("utf-8", errors="replace")[:200]
-        print(f"  WARN: edge-tts failed for {voice}: {err}")
-        # Generate silence as fallback
-        dur_s = max(len(text) / 30, 2)  # ~2s per 60 chars
-        subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error",
-             "-f", "lavfi", "-i", f"anoisesrc=d={dur_s}:c=pink:a=0.01",
-             "-ac", "1", "-ar", "16000", output_path],
-            check=True, capture_output=True
-        )
 
 def create_srt(lines: list[str], audio_duration_s: float, output_path: str,
                lang: str = "en") -> None:
@@ -92,14 +89,14 @@ def main():
     # 1. Generate English audio (original track)
     en_audio = str(FIXTURES_DIR / "en_audio.mp3")
     en_full_text = " ".join(EN_LINES)
-    generate_audio(en_full_text, "en-US-AriaNeural", en_audio)
+    generate_audio(en_full_text, en_audio, 440)
     en_duration = get_audio_duration(en_audio)
     print(f"  English audio duration: {en_duration:.1f}s")
 
     # 2. Generate Russian audio (voiceover reference)
     ru_audio = str(FIXTURES_DIR / "ru_audio.mp3")
     ru_full_text = " ".join(RU_LINES)
-    generate_audio(ru_full_text, "ru-RU-SvetlanaNeural", ru_audio)
+    generate_audio(ru_full_text, ru_audio, 660)
     ru_duration = get_audio_duration(ru_audio)
     print(f"  Russian audio duration: {ru_duration:.1f}s")
 

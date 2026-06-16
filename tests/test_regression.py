@@ -5,6 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
+from tests.conftest import edge_tts_ready
 
 TESTS_DIR = Path(__file__).parent
 FIXTURES_DIR = TESTS_DIR / "fixtures"
@@ -20,6 +21,9 @@ def test_full_pipeline_with_srt(fixtures_ready, tmp_path):
     This is the MAIN regression test: generates TTS, converts, assembles,
     mixes, and encodes output. Verifies WAV header integrity at assembly step.
     """
+    if not edge_tts_ready():
+        pytest.skip("edge-tts unavailable for slow end-to-end test")
+
     video = str(FIXTURES_DIR / "test_video.mkv")
     srt = str(FIXTURES_DIR / "ru_subtitles.srt")
     output = str(tmp_path / "output.mkv")
@@ -95,6 +99,9 @@ def test_overlap_regression(fixtures_ready, tmp_path):
     If assembly doesn't update the WAV header, some segments will be lost.
     This test verifies that ALL generated segments are audible.
     """
+    if not edge_tts_ready():
+        pytest.skip("edge-tts unavailable for slow overlap test")
+
     # Generate entries with very tight spacing (every 800ms)
     # Use natural Russian speech so silenceremove doesn't eat pauses
     short_lines = [
@@ -225,6 +232,9 @@ def test_extract_from_external_srt():
 
 def test_wav_header_after_mix(fixtures_ready, tmp_path):
     """After mixing, the WAV should have a valid, non-trunctated header."""
+    if not edge_tts_ready():
+        pytest.skip("edge-tts unavailable for mix regression test")
+
     video = str(FIXTURES_DIR / "test_video.mkv")
     srt = str(FIXTURES_DIR / "ru_subtitles.srt")
     output = str(tmp_path / "mix_output.wav")
@@ -298,6 +308,9 @@ def test_wav_preserves_speech(fixtures_ready, tmp_path):
     A multi-sentence phrase must produce a WAV file longer than 1000ms
     with amplitude > 1000 (i.e., audible speech preserved).
     """
+    if not edge_tts_ready():
+        pytest.skip("edge-tts unavailable for speech preservation test")
+
     tts_dir = tmp_path / "tts"
     tts_dir.mkdir()
     from tests.conftest import make_sine_wav
