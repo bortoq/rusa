@@ -8,6 +8,7 @@ rusa — Russian Voiceover for Movies
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -202,6 +203,36 @@ def shell_ok(cmd: list[str], **kwargs) -> bool:
         return r.returncode == 0
     except FileNotFoundError:
         return False
+
+
+def _tts_cache_dir() -> str:
+    """Return persistent cache directory for generated TTS assets."""
+    if os.environ.get("RUSA_CACHE_DIR"):
+        base = os.environ["RUSA_CACHE_DIR"]
+    elif os.environ.get("XDG_CACHE_HOME"):
+        base = os.path.join(os.environ["XDG_CACHE_HOME"], "rusa")
+    else:
+        base = os.path.join(os.path.expanduser("~/.cache"), "rusa")
+    cache_dir = os.path.join(base, "tts")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def _tts_cache_path(voice: str, text: str) -> str:
+    """Stable cache key for final MP3 generated from voice+text."""
+    digest = hashlib.sha256(f"{voice}\0{text}".encode("utf-8")).hexdigest()
+    return os.path.join(_tts_cache_dir(), f"{digest}.mp3")
+
+
+def _copy_into_cache(src: str, cache_path: str) -> None:
+    """Atomically populate cache entry if it does not exist yet."""
+    if not os.path.isfile(src) or os.path.getsize(src) <= 100:
+        return
+    if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
+        return
+    tmp_cache = f"{cache_path}.tmp.{os.getpid()}.{time.time_ns()}"
+    shutil.copy2(src, tmp_cache)
+    os.replace(tmp_cache, cache_path)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Определение языка субтитров
@@ -511,11 +542,17 @@ def step_generate_tts(entries: list[Entry], voice: str, threads: int,
 
         parts = _split_text(text)
         out = os.path.join(tts_dir, f"batch_{idx:04d}.mp3")
+        cache_path = _tts_cache_path(voice, text)
+
+        if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
+            shutil.copy2(cache_path, out)
+            return idx, out
 
         # Single part — generate directly
         if len(parts) == 1:
             for attempt in range(1, MAX_RETRIES + 1):
                 if os.path.isfile(out) and os.path.getsize(out) > 100:
+                    _copy_into_cache(out, cache_path)
                     return idx, out
                 try:
                     rc = subprocess.run(
@@ -523,6 +560,7 @@ def step_generate_tts(entries: list[Entry], voice: str, threads: int,
                         capture_output=True, timeout=180, check=False,
                     ).returncode
                     if rc == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
+                        _copy_into_cache(out, cache_path)
                         return idx, out
                 except subprocess.TimeoutExpired:
                     pass
@@ -573,11 +611,13 @@ def step_generate_tts(entries: list[Entry], voice: str, threads: int,
             check=False, capture_output=True,
         )
         if rc.returncode == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
+            _copy_into_cache(out, cache_path)
             return idx, out
         # Fallback: use first part only
         if part_files:
             shutil.copy2(part_files[0], out)
             if os.path.getsize(out) > 100:
+                _copy_into_cache(out, cache_path)
                 return idx, out
         return idx, None
 
