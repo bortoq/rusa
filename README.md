@@ -37,13 +37,35 @@ pip install edge-tts tqdm langdetect
 ## Использование
 
 ```bash
-rusa movie.mkv                                                    # всё автоматически
-rusa --voice ru-RU-DmitryNeural movie.mkv                         # явный голос
-rusa -s subs.srt --speed 2.0 movie.mkv                            # свои субтитры, темп
-rusa --aac 192 movie.mkv                                          # аудиокодек AAC 192kbps
-rusa --opus 96 --normalize movie.mkv                              # Opus 96kbps + нормализация
-rusa --from 10 --to 50 --audio-only movie.mkv                     # диапазон субтитров 10–50, только аудио
-rusa --voice                                                      # список доступных голосов
+# Базовое использование
+rusa movie.mkv
+
+# Мужской голос + ускорение
+rusa --voice ru-RU-DmitryNeural --speed 1.8 movie.mkv
+
+# Свои субтитры, темп
+rusa -s subs.srt --speed 2.0 movie.mkv
+
+# AAC с нормализацией качества, только аудио
+rusa --aac 192 --normalize fine --audio-only movie.mkv
+
+# Opus 96kbps + нормализация
+rusa --opus 96 --normalize movie.mkv
+
+# Спектр субтитров (первые 30), MP3
+rusa --from 1 --to 30 --mp3 128 movie.mkv
+
+# Только аудио, диапазон
+rusa --from 10 --to 50 --audio-only movie.mkv
+
+# Список доступных голосов
+rusa --voice
+
+# Русские субтитры из внешнего файла
+rusa -s subtitles.ru.srt movie.mkv
+
+# Свои субтитры + синхронизация + Opus 96kbps
+rusa -s subs.srt --sync --opus 96 movie.mkv
 ```
 
 ## Параметры
@@ -104,28 +126,6 @@ rusa --voice                                                      # список
 ## Кэширование
 
 Не реализовано (и не планируется). Повторный запуск перегенерирует все субтитры заново.
-
-## Примеры
-
-```bash
-# Базовое использование
-rusa movie.mkv
-
-# Мужской голос + ускорение
-rusa --voice ru-RU-DmitryNeural --speed 1.8 movie.mkv
-
-# AAC с нормализацией качества, только аудио
-rusa --aac 192 --normalize fine --audio-only movie.mkv
-
-# Спектр субтитров (первые 30), MP3
-rusa --from 1 --to 30 --mp3 128 movie.mkv
-
-# Русские субтитры из внешнего файла
-rusa -s subtitles.ru.srt movie.mkv
-
-# Свои субтитры + синхронизация + Opus 96kbps
-rusa -s subs.srt --sync --opus 96 movie.mkv
-```
 
 ## Лицензия
 
