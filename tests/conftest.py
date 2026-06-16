@@ -19,6 +19,7 @@ PROJECT_DIR = TESTS_DIR.parent
 def pytest_configure(config):
     """Register custom markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "live_tts: marks tests that require a working live edge-tts environment")
 
 
 def pytest_addoption(parser):

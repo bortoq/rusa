@@ -48,6 +48,14 @@ DEFAULT_ORIG_VOL = "0.65"
 DEFAULT_TTS_VOL = "0.93"
 DEFAULT_THREADS = 6
 MAX_TTS_CHARS = 3000  # edge-tts limit
+WAV_FILTER_VERSION = "1"
+DEFAULT_SUBS_MODE = "auto"
+_CACHE_DISABLED = False
+EXIT_RUNTIME_ERROR = 1
+EXIT_USAGE_ERROR = 2
+EXIT_DEPENDENCY_ERROR = 3
+EXIT_SUBTITLE_ERROR = 4
+EXIT_CODEC_ERROR = 5
 
 # Codec map: short_name -> (ffmpeg_codec, ffmpeg_container, file_ext, default_bitrate)
 CODEC_MAP = {
@@ -173,14 +181,14 @@ def warn(msg: str) -> None:
 def err(msg: str) -> None:
     print(f"{RED}\u2717{NC} {msg}", file=sys.stderr)
 
-def die(msg: str) -> None:
+def die(msg: str, code: int = EXIT_RUNTIME_ERROR) -> None:
     err(msg)
-    sys.exit(1)
+    sys.exit(code)
 
 def which(cmd: str) -> str:
     exe = shutil.which(cmd)
     if not exe:
-        die(f"{cmd} не найден в PATH")
+        die(f"{cmd} не найден в PATH", EXIT_DEPENDENCY_ERROR)
     return exe
 
 def shell(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -193,7 +201,7 @@ def shell(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
             sys.stderr.write(e.stderr.decode("utf-8", errors="replace"))
         die(f"\u041a\u043e\u043c\u0430\u043d\u0434\u0430 {' '.join(cmd)} \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043b\u0430\u0441\u044c \u0441 \u043a\u043e\u0434\u043e\u043c {e.returncode}")
     except FileNotFoundError:
-        die(f"\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430: {cmd[0]}")
+        die(f"\u041a\u043e\u043c\u0430\u043d\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430: {cmd[0]}", EXIT_DEPENDENCY_ERROR)
     except Exception as e:
         die(f"\u041e\u0448\u0438\u0431\u043a\u0430 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f {' '.join(cmd)}: {e}")
 
@@ -205,27 +213,64 @@ def shell_ok(cmd: list[str], **kwargs) -> bool:
         return False
 
 
-def _tts_cache_dir() -> str:
-    """Return persistent cache directory for generated TTS assets."""
+def _cache_enabled() -> bool:
+    return not _CACHE_DISABLED
+
+
+def _cache_root_dir(create: bool = True) -> str | None:
+    """Return persistent cache root directory, or None if cache is unavailable."""
+    if not _cache_enabled():
+        return None
     if os.environ.get("RUSA_CACHE_DIR"):
         base = os.environ["RUSA_CACHE_DIR"]
     elif os.environ.get("XDG_CACHE_HOME"):
         base = os.path.join(os.environ["XDG_CACHE_HOME"], "rusa")
     else:
         base = os.path.join(os.path.expanduser("~/.cache"), "rusa")
-    cache_dir = os.path.join(base, "tts")
-    os.makedirs(cache_dir, exist_ok=True)
+    if create:
+        try:
+            os.makedirs(base, exist_ok=True)
+        except OSError:
+            return None
+    elif not os.path.isdir(base):
+        return None
+    return base
+
+
+def _cache_subdir(name: str, create: bool = True) -> str | None:
+    """Return a cache subdirectory path, or None if cache is unavailable."""
+    root = _cache_root_dir(create=create)
+    if root is None:
+        return None
+    cache_dir = os.path.join(root, name)
+    if create:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+        except OSError:
+            return None
+    elif not os.path.isdir(cache_dir):
+        return None
     return cache_dir
 
 
-def _tts_cache_path(voice: str, text: str) -> str:
+def _tts_cache_dir() -> str | None:
+    """Return persistent cache directory for generated TTS assets."""
+    return _cache_subdir("tts")
+
+
+def _tts_cache_path(voice: str, text: str) -> str | None:
     """Stable cache key for final MP3 generated from voice+text."""
+    cache_dir = _tts_cache_dir()
+    if cache_dir is None:
+        return None
     digest = hashlib.sha256(f"{voice}\0{text}".encode("utf-8")).hexdigest()
-    return os.path.join(_tts_cache_dir(), f"{digest}.mp3")
+    return os.path.join(cache_dir, f"{digest}.mp3")
 
 
-def _copy_into_cache(src: str, cache_path: str) -> None:
+def _copy_into_cache(src: str, cache_path: str | None) -> None:
     """Atomically populate cache entry if it does not exist yet."""
+    if not cache_path:
+        return
     if not os.path.isfile(src) or os.path.getsize(src) <= 100:
         return
     if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
@@ -233,6 +278,117 @@ def _copy_into_cache(src: str, cache_path: str) -> None:
     tmp_cache = f"{cache_path}.tmp.{os.getpid()}.{time.time_ns()}"
     shutil.copy2(src, tmp_cache)
     os.replace(tmp_cache, cache_path)
+
+
+def _wav_cache_dir() -> str | None:
+    """Return persistent cache directory for converted WAV assets."""
+    return _cache_subdir("wav")
+
+
+def _file_sha256(path: str) -> str:
+    """Hash file contents for cache identity."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _wav_cache_path(mp3_path: str, speed: str) -> str | None:
+    """Stable cache key for final WAV generated from mp3 content and speed."""
+    cache_dir = _wav_cache_dir()
+    if cache_dir is None:
+        return None
+    digest = hashlib.sha256(
+        f"{_file_sha256(mp3_path)}\0{speed}\0{WAV_FILTER_VERSION}".encode("utf-8")
+    ).hexdigest()
+    return os.path.join(cache_dir, f"{digest}.wav")
+
+
+def _cache_bucket_stats(name: str) -> tuple[int, int]:
+    """Return file count and total size for a cache bucket."""
+    cache_dir = _cache_subdir(name, create=False)
+    if cache_dir is None or not os.path.isdir(cache_dir):
+        return 0, 0
+    files = 0
+    size = 0
+    for root, _dirs, filenames in os.walk(cache_dir):
+        for filename in filenames:
+            path = os.path.join(root, filename)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            files += 1
+            size += stat.st_size
+    return files, size
+
+
+def _format_bytes(size: int) -> str:
+    """Render bytes in a compact human-readable form."""
+    value = float(size)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit = units[0]
+    for candidate in units:
+        unit = candidate
+        if value < 1024.0 or candidate == units[-1]:
+            break
+        value /= 1024.0
+    if unit == "B":
+        return f"{int(value)} {unit}"
+    return f"{value:.1f} {unit}"
+
+
+def print_cache_stats() -> None:
+    """Print current cache usage and exit."""
+    root = _cache_root_dir(create=False)
+    if root is None:
+        print("Cache: empty")
+        sys.exit(0)
+
+    tts_files, tts_size = _cache_bucket_stats("tts")
+    wav_files, wav_size = _cache_bucket_stats("wav")
+    total_files = tts_files + wav_files
+    total_size = tts_size + wav_size
+    print(f"Cache root: {root}")
+    print(f"TTS: {tts_files} files, {_format_bytes(tts_size)}")
+    print(f"WAV: {wav_files} files, {_format_bytes(wav_size)}")
+    print(f"Total: {total_files} files, {_format_bytes(total_size)}")
+    sys.exit(0)
+
+
+def clear_cache() -> None:
+    """Remove all cache payloads and exit."""
+    root = _cache_root_dir(create=False)
+    if root is None or not os.path.isdir(root):
+        print("Cache already empty")
+        sys.exit(0)
+
+    removed = 0
+    for name in ("tts", "wav"):
+        cache_dir = os.path.join(root, name)
+        if not os.path.isdir(cache_dir):
+            continue
+        for entry in os.scandir(cache_dir):
+            removed += 1
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(entry.path)
+                except OSError:
+                    pass
+    print(f"Cache cleared: removed {removed} entries from {root}")
+    sys.exit(0)
+
+
+def print_timing_summary(stage_durations: list[tuple[str, float]]) -> None:
+    """Print a compact timing summary for the completed pipeline."""
+    if not stage_durations:
+        return
+    print("Timing:")
+    for name, seconds in stage_durations:
+        print(f"  {name}: {seconds:.1f}s")
 
 # ──────────────────────────────────────────────────────────────────────────
 # Определение языка субтитров
@@ -324,6 +480,12 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="\u041d\u0435 \u0443\u0434\u0430\u043b\u044f\u0442\u044c \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0435 \u0444\u0430\u0439\u043b\u044b")
     parser.add_argument("--threads", type=int, default=DEFAULT_THREADS,
                         help=f"\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u043f\u043e\u0442\u043e\u043a\u043e\u0432 TTS (\u043f\u043e \u0443\u043c\u043e\u043b\u0447. {DEFAULT_THREADS})")
+    parser.add_argument("--cache-stats", action="store_true",
+                        help="\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043a\u0443 TTS/WAV \u043a\u044d\u0448\u0430 \u0438 \u0432\u044b\u0439\u0442\u0438")
+    parser.add_argument("--cache-clear", action="store_true",
+                        help="\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u044c TTS/WAV \u043a\u044d\u0448 \u0438 \u0432\u044b\u0439\u0442\u0438")
+    parser.add_argument("--no-cache", action="store_true",
+                        help="\u041d\u0435 \u0447\u0438\u0442\u0430\u0442\u044c \u0438 \u043d\u0435 \u043f\u0438\u0441\u0430\u0442\u044c TTS/WAV \u043a\u044d\u0448 \u0432 \u044d\u0442\u043e\u043c \u0437\u0430\u043f\u0443\u0441\u043a\u0435")
 
     # Audio format (mutually exclusive)
     fmt_group = parser.add_mutually_exclusive_group()
@@ -347,6 +509,13 @@ def _build_parser() -> argparse.ArgumentParser:
     # Audio-only
     parser.add_argument("--audio-only", action="store_true",
                         help="\u0422\u043e\u043b\u044c\u043a\u043e \u0430\u0443\u0434\u0438\u043e (\u0431\u0435\u0437 \u0432\u0438\u0434\u0435\u043e)")
+    parser.add_argument(
+        "--subs-mode",
+        choices=["auto", "copy", "convert", "drop"],
+        default=DEFAULT_SUBS_MODE,
+        help="\u0420\u0435\u0436\u0438\u043c \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u0432 \u0432\u044b\u0445\u043e\u0434\u043d\u043e\u043c \u0432\u0438\u0434\u0435\u043e: "
+             "auto|copy|convert|drop (\u043f\u043e \u0443\u043c\u043e\u043b\u0447. auto)",
+    )
 
     # Normalize
     parser.add_argument("--normalize", nargs="?", const="fine",
@@ -364,7 +533,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
     dest = os.path.join(tmpdir, "subtitles.srt")
     if srt_file:
         if not os.path.isfile(srt_file):
-            die(f"\u0424\u0430\u0439\u043b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: {srt_file}")
+            die(f"\u0424\u0430\u0439\u043b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: {srt_file}", EXIT_SUBTITLE_ERROR)
         info(f"\u0418\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e\u0442\u0441\u044f \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b: {srt_file}")
         shutil.copy2(srt_file, dest)
         ok(f"\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b: {sum(1 for _ in open(dest, encoding='utf-8'))} \u0441\u0442\u0440\u043e\u043a")
@@ -427,9 +596,9 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
     if not found:
         avail_str = ", ".join(f"#{idx} ({lang})" for idx, lang in available) if available else "\u043d\u0435\u0442 \u043f\u043e\u0442\u043e\u043a\u043e\u0432"
         if target_lang:
-            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043d\u0430 \u044f\u0437\u044b\u043a\u0435 '{target_lang}'. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt> \u0438\u043b\u0438 --lang \u0434\u0440\u0443\u0433\u043e\u0439 \u044f\u0437\u044b\u043a.")
+            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043d\u0430 \u044f\u0437\u044b\u043a\u0435 '{target_lang}'. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt> \u0438\u043b\u0438 --lang \u0434\u0440\u0443\u0433\u043e\u0439 \u044f\u0437\u044b\u043a.", EXIT_SUBTITLE_ERROR)
         else:
-            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0440\u0443\u0441\u0441\u043a\u0438\u0435 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt>")
+            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0440\u0443\u0441\u0441\u043a\u0438\u0435 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt>", EXIT_SUBTITLE_ERROR)
     ok(f"\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b: {sum(1 for _ in open(dest, encoding='utf-8'))} \u0441\u0442\u0440\u043e\u043a")
     return dest
 
@@ -492,7 +661,7 @@ def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None)
         hi = range_to or len(entries)
         entries = [e for e in entries if lo <= e["idx"] <= hi]
         if not entries:
-            die(f"\u041d\u0435\u0442 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u0432 \u0434\u0438\u0430\u043f\u0430\u0437\u043e\u043d\u0435 {lo}\u2013{hi}")
+            die(f"\u041d\u0435\u0442 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u0432 \u0434\u0438\u0430\u043f\u0430\u0437\u043e\u043d\u0435 {lo}\u2013{hi}", EXIT_SUBTITLE_ERROR)
         # Normalize indices so file naming stays clean
         for i, e in enumerate(entries, 1):
             e["idx"] = i
@@ -544,7 +713,7 @@ def step_generate_tts(entries: list[Entry], voice: str, threads: int,
         out = os.path.join(tts_dir, f"batch_{idx:04d}.mp3")
         cache_path = _tts_cache_path(voice, text)
 
-        if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
+        if cache_path and os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
             shutil.copy2(cache_path, out)
             return idx, out
 
@@ -674,6 +843,18 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
     def convert_one(item: tuple[int, str]) -> tuple[int, str, float] | None:
         idx, mp3_path = item
         wav_path = os.path.join(wav_dir, f"batch_{idx:04d}.wav")
+        cache_path = _wav_cache_path(mp3_path, speed)
+        if cache_path and os.path.isfile(cache_path) and os.path.getsize(cache_path) > 44:
+            shutil.copy2(cache_path, wav_path)
+            try:
+                with wave.open(wav_path, "rb") as w:
+                    frames = w.getnframes()
+                    duration_ms = frames / WAV_FRAMERATE * 1000
+                if duration_ms >= 50:
+                    return (idx, wav_path, duration_ms)
+                warn(f"  #{idx} cached wav too short ({duration_ms:.0f}ms), regenerating")
+            except Exception:
+                warn(f"  #{idx} cached wav damaged, regenerating")
         # atempo + trim leading AND trailing silence via areverse trick
         # (areverse + start_periods reliably trims trailing silence without destroying speech)
         filter_str = (
@@ -697,10 +878,12 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
                     duration_ms = frames / WAV_FRAMERATE * 1000
                 # Sanity check: reject near-silent files (duration < 50ms)
                 if duration_ms >= 50:
+                    _copy_into_cache(wav_path, cache_path)
                     return (idx, wav_path, duration_ms)
                 else:
                     warn(f"  #{idx} too short ({duration_ms:.0f}ms), skipped")
             except Exception:
+                _copy_into_cache(wav_path, cache_path)
                 return (idx, wav_path, 0)
         else:
             warn(f"  #{idx} \u043d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c")
@@ -851,6 +1034,109 @@ def _subtitle_copy_not_supported(err_text: str, output: str) -> bool:
     return output.lower().endswith(".mkv") and "subtitle codec" in lower and "not supported" in lower
 
 
+def _probe_subtitle_codecs(video: str) -> list[str] | None:
+    """Return codec_name values for all subtitle streams that 0:s? would map."""
+    rc = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "s",
+            "-show_entries", "stream=codec_name",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if rc.returncode != 0:
+        return None
+    codecs = []
+    for line in rc.stdout.strip().splitlines():
+        value = line.strip().lower()
+        if value:
+            codecs.append(value)
+    return codecs
+
+
+def _subtitle_copy_codecs_supported(output: str, source_subtitle_codecs: list[str] | None) -> bool | None:
+    """Return whether all mapped subtitles can be copied into the target container as-is."""
+    if source_subtitle_codecs is None:
+        return None
+    if not source_subtitle_codecs:
+        return True
+    ext = Path(output).suffix.lower()
+    incompatible = {
+        # Keep mkv permissive: only reject codecs we know ffmpeg cannot copy there.
+        ".mkv": {"mov_text"},
+        ".mp4": {
+            "subrip", "srt", "ass", "ssa", "webvtt", "vtt",
+            "hdmv_pgs_subtitle", "dvd_subtitle", "xsub",
+        },
+        ".m4v": {
+            "subrip", "srt", "ass", "ssa", "webvtt", "vtt",
+            "hdmv_pgs_subtitle", "dvd_subtitle", "xsub",
+        },
+    }
+    if ext in {".mp4", ".m4v"}:
+        return all(codec == "mov_text" for codec in source_subtitle_codecs)
+    blocked = incompatible.get(ext)
+    if blocked is None:
+        return None
+    return all(codec not in blocked for codec in source_subtitle_codecs)
+
+
+def _subtitle_convert_codec(output: str) -> str | None:
+    """Return a compatible text subtitle codec for the output container."""
+    ext = Path(output).suffix.lower()
+    if ext == ".mkv":
+        return "srt"
+    if ext in {".mp4", ".m4v"}:
+        return "mov_text"
+    return None
+
+
+def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[str], list[str]]:
+    """Choose explicit subtitle mux strategy for the requested mode."""
+    if subs_mode == "drop":
+        return ["drop"], []
+
+    source_subtitle_codecs = _probe_subtitle_codecs(video)
+    convert_codec = _subtitle_convert_codec(output)
+    copy_supported = _subtitle_copy_codecs_supported(output, source_subtitle_codecs)
+
+    if subs_mode == "copy":
+        if copy_supported is None:
+            codec_label = ", ".join(source_subtitle_codecs) if source_subtitle_codecs else "unknown"
+            die(
+                f"Не удалось надёжно проверить совместимость субтитров codec={codec_label} "
+                f"для контейнера '{Path(output).suffix or output}' при --subs-mode copy. "
+                "Используйте --subs-mode auto, --subs-mode convert или --subs-mode drop."
+            , EXIT_SUBTITLE_ERROR)
+        if not copy_supported:
+            codec_label = ", ".join(source_subtitle_codecs) if source_subtitle_codecs else "unknown"
+            die(
+                f"Нельзя скопировать субтитры codec={codec_label} в контейнер '{Path(output).suffix or output}' "
+                f"при --subs-mode copy. Используйте --subs-mode convert или --subs-mode drop."
+            , EXIT_SUBTITLE_ERROR)
+        return ["copy"], source_subtitle_codecs
+
+    if subs_mode == "convert":
+        if not convert_codec:
+            die(
+                f"Для контейнера '{Path(output).suffix or output}' нет поддерживаемого текстового формата "
+                "для --subs-mode convert."
+            , EXIT_SUBTITLE_ERROR)
+        return [convert_codec], source_subtitle_codecs
+
+    plan = []
+    if copy_supported is True or copy_supported is None:
+        plan.append("copy")
+    if convert_codec:
+        plan.append(convert_codec)
+    plan.append("drop")
+    return plan, source_subtitle_codecs
+
+
 def _build_video_mux_cmd(
     video: str,
     source_audio: str,
@@ -946,7 +1232,8 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
                     output: str, tmpdir: str,
                     audio_fmt: str, audio_bitrate: str,
                     normalize: str | None, audio_only: bool,
-                    voiceover_lang: str = "rus") -> None:
+                    voiceover_lang: str = "rus",
+                    subs_mode: str = DEFAULT_SUBS_MODE) -> None:
     info("\u041c\u0438\u043a\u0441...")
     mixed = os.path.join(tmpdir, "mixed.wav")
     filter_expr = (
@@ -1016,7 +1303,7 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
             f"\u041a\u043e\u0434\u0435\u043a {ffmpeg_codec} \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0432 \u0432\u0430\u0448\u0435\u0439 \u0441\u0431\u043e\u0440\u043a\u0435 ffmpeg.\n"
             f"\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0434\u0440\u0443\u0433\u043e\u0439 \u0444\u043e\u0440\u043c\u0430\u0442: {suggestions}"
         )
-        die(msg)
+        die(msg, EXIT_CODEC_ERROR)
 
     info(f"\u041a\u043e\u0434\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435: {ffmpeg_codec} {bitrate_arg}...")
 
@@ -1039,9 +1326,9 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
         if not output:
             base = os.path.splitext(os.path.basename(video))[0]
             output = os.path.join(os.path.dirname(video), f"{base}_dubbed.mkv")
-        subtitle_modes = ["copy", "srt", "drop"]
+        subtitle_modes, _source_subtitle_codec = _subtitle_mux_plan(video, output, subs_mode)
         last_err_text = ""
-        for subtitle_mode in subtitle_modes:
+        for index, subtitle_mode in enumerate(subtitle_modes):
             rc = subprocess.run(
                 _build_video_mux_cmd(
                     video,
@@ -1058,10 +1345,18 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
             if rc.returncode == 0:
                 break
             last_err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
-            if subtitle_mode == "copy" and _subtitle_copy_not_supported(last_err_text, output):
-                warn("Копирование субтитров в этот контейнер не поддерживается, пробую перекодировать их в SRT")
-                continue
-            if subtitle_mode == "srt":
+            remaining_modes = subtitle_modes[index + 1:]
+            if subtitle_mode == "copy" and remaining_modes:
+                if _subtitle_copy_not_supported(last_err_text, output):
+                    warn("Копирование субтитров в этот контейнер не поддерживается, пробую перекодировать их в SRT")
+                    continue
+                if _source_subtitle_codec:
+                    warn("Не удалось скопировать субтитры как есть, пробую совместимый текстовый формат")
+                    continue
+                if len(subtitle_modes) > 1:
+                    warn("Не удалось скопировать субтитры как есть, пробую совместимый текстовый формат")
+                    continue
+            if subtitle_mode != "drop" and remaining_modes == ["drop"]:
                 warn("Не удалось сохранить субтитры в выходном контейнере, пробую сохранить файл без них")
                 continue
             break
@@ -1089,7 +1384,7 @@ def list_voices() -> None:
         check=False, capture_output=True, text=True
     )
     if rc.returncode != 0:
-        die("edge-tts \u043d\u0435 \u043e\u0442\u0432\u0435\u0447\u0430\u0435\u0442")
+        die("edge-tts \u043d\u0435 \u043e\u0442\u0432\u0435\u0447\u0430\u0435\u0442", EXIT_DEPENDENCY_ERROR)
     print(rc.stdout)
     print("\u0424\u0438\u043b\u044c\u0442\u0440 \u043f\u043e \u0440\u0443\u0441\u0441\u043a\u0438\u043c:")
     for line in rc.stdout.split("\n"):
@@ -1102,128 +1397,163 @@ def list_voices() -> None:
 # ──────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    global _CACHE_DISABLED
     args = _get_parser().parse_args(sys.argv[1:])
-
-    # --voice without argument → list voices
-    if args.voice == "__LIST__":
-        list_voices()
-
-    if not args.video:
-        _get_parser().print_help()
-        sys.exit(0)
-
-    video = os.path.realpath(args.video)
-    if not os.path.isfile(video):
-        die(f"\u0424\u0430\u0439\u043b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: {video}")
-
-    # \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0437\u0430\u0432\u0438\u0441\u0438\u043c\u043e\u0441\u0442\u0435\u0439
-    which("ffmpeg")
-    which("ffprobe")
-    which("python3")
-    rc = subprocess.run(
-        ["python3", "-m", "edge_tts", "--help"],
-        check=False, capture_output=True
-    )
-    if rc.returncode != 0:
-        die("edge-tts \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d (pip install edge-tts)")
-
-    # \u0410\u0443\u0434\u0438\u043e\u0444\u043e\u0440\u043c\u0430\u0442
-    audio_fmt = "opus"
-    audio_bitrate = "64"
-    normalize = args.normalize
-    for candidate in ("aac", "mp3", "opus", "ac3"):
-        val = getattr(args, candidate, None)
-        if val is not None:
-            audio_fmt = candidate
-            audio_bitrate = val
-            break
-
-    # Determine target subtitle language and voice BEFORE info line
-    target_lang = None
-    if args.lang:
-        target_lang = normalize_lang_code(args.lang)
-        if target_lang not in LANG_VOICE_MAP and not args.voice:
-            die(
-                f"Язык '{args.lang}' не поддерживается для авто-выбора голоса. "
-                "Укажите --voice явно."
-            )
-        info(f"Язык субтитров: {target_lang}")
-    elif args.voice:
-        target_lang = voice_to_lang_code(args.voice)
-
-    # Voice: explicit --voice, or look up from --lang, or default
-    if args.voice:
-        voice = args.voice
-    elif target_lang and target_lang in LANG_VOICE_MAP:
-        voice = LANG_VOICE_MAP[target_lang]
-    else:
-        voice = DEFAULT_VOICE
-
-    # Warn if voice is not in the live list
-    rc_list = subprocess.run(
-        ["python3", "-m", "edge_tts", "--list-voices"],
-        check=False, capture_output=True, text=True
-    )
-    if rc_list.returncode == 0 and voice not in rc_list.stdout:
-        warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
-        warn("Возможно, он удалён Microsoft. Генерация может не работать.")
-
-    # Output file
-    if args.output:
-        output = os.path.realpath(args.output)
-    else:
-        base = os.path.splitext(os.path.basename(video))[0]
-        ext = CODEC_MAP[audio_fmt][2] if args.audio_only else ".mkv"
-        output = os.path.join(os.path.dirname(video), f"{base}_dubbed{ext}")
-
-    # Info
-    sync_str = "вкл" if args.sync else "выкл"
-    codec_name, codec_bit, _ = _get_codec(audio_fmt, audio_bitrate)
-    info(f"Синхронизация: {sync_str} | "
-         f"Голос: {voice} | "
-         f"Кодек: {codec_name} {codec_bit} | "
-         f"Темп: {args.speed}x | "
-         f"Оригинал: {args.orig_vol} | TTS: {args.tts_vol}")
-    if normalize:
-        info(f"Нормализация: {normalize}")
-    if args.range_from or args.range_to:
-        info(f"Диапазон субтитров: {args.range_from or 1}–{args.range_to or '...'}")
-    if args.audio_only:
-        info("Режим: только аудио")
-
-    # Temp dir
-    tmpdir = tempfile.mkdtemp(prefix="rusa_")
+    prev_cache_disabled = _CACHE_DISABLED
     try:
-        subs_path = step_extract_subtitles(video, args.srt, tmpdir, target_lang)
+        # --voice without argument → list voices
+        if args.voice == "__LIST__":
+            list_voices()
 
-        # Уточняем голос только если не было --voice и не было --lang
-        if args.voice is None and args.lang is None:
-            detected = detect_language_from_srt(subs_path)
-            if detected:
-                voice = detected
-                info(f"Язык определён: {voice}")
-            else:
-                if HAS_LANGDETECT:
-                    warn("Не удалось определить язык субтитров, использую голос по умолчанию")
+        if args.cache_stats:
+            print_cache_stats()
+
+        if args.cache_clear:
+            clear_cache()
+
+        _CACHE_DISABLED = bool(args.no_cache)
+
+        if not args.video:
+            _get_parser().print_help()
+            sys.exit(0)
+
+        video = os.path.realpath(args.video)
+        if not os.path.isfile(video):
+            die(f"\u0424\u0430\u0439\u043b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d: {video}")
+
+        # \u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0437\u0430\u0432\u0438\u0441\u0438\u043c\u043e\u0441\u0442\u0435\u0439
+        which("ffmpeg")
+        which("ffprobe")
+        which("python3")
+        rc = subprocess.run(
+            ["python3", "-m", "edge_tts", "--help"],
+            check=False, capture_output=True
+        )
+        if rc.returncode != 0:
+            die("edge-tts \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
+
+        # \u0410\u0443\u0434\u0438\u043e\u0444\u043e\u0440\u043c\u0430\u0442
+        audio_fmt = "opus"
+        audio_bitrate = "64"
+        normalize = args.normalize
+        for candidate in ("aac", "mp3", "opus", "ac3"):
+            val = getattr(args, candidate, None)
+            if val is not None:
+                audio_fmt = candidate
+                audio_bitrate = val
+                break
+
+        # Determine target subtitle language and voice BEFORE info line
+        target_lang = None
+        if args.lang:
+            target_lang = normalize_lang_code(args.lang)
+            if target_lang not in LANG_VOICE_MAP and not args.voice:
+                die(
+                    f"Язык '{args.lang}' не поддерживается для авто-выбора голоса. "
+                    "Укажите --voice явно."
+                )
+            info(f"Язык субтитров: {target_lang}")
+        elif args.voice:
+            target_lang = voice_to_lang_code(args.voice)
+
+        # Voice: explicit --voice, or look up from --lang, or default
+        if args.voice:
+            voice = args.voice
+        elif target_lang and target_lang in LANG_VOICE_MAP:
+            voice = LANG_VOICE_MAP[target_lang]
+        else:
+            voice = DEFAULT_VOICE
+
+        # Warn if voice is not in the live list
+        rc_list = subprocess.run(
+            ["python3", "-m", "edge_tts", "--list-voices"],
+            check=False, capture_output=True, text=True
+        )
+        if rc_list.returncode == 0 and voice not in rc_list.stdout:
+            warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
+            warn("Возможно, он удалён Microsoft. Генерация может не работать.")
+
+        # Output file
+        if args.output:
+            output = os.path.realpath(args.output)
+        else:
+            base = os.path.splitext(os.path.basename(video))[0]
+            ext = CODEC_MAP[audio_fmt][2] if args.audio_only else ".mkv"
+            output = os.path.join(os.path.dirname(video), f"{base}_dubbed{ext}")
+
+        # Info
+        sync_str = "вкл" if args.sync else "выкл"
+        codec_name, codec_bit, _ = _get_codec(audio_fmt, audio_bitrate)
+        info(f"Синхронизация: {sync_str} | "
+             f"Голос: {voice} | "
+             f"Кодек: {codec_name} {codec_bit} | "
+             f"Темп: {args.speed}x | "
+             f"Оригинал: {args.orig_vol} | TTS: {args.tts_vol}")
+        if normalize:
+            info(f"Нормализация: {normalize}")
+        if args.no_cache:
+            info("Кэш: выкл")
+        if args.range_from or args.range_to:
+            info(f"Диапазон субтитров: {args.range_from or 1}–{args.range_to or '...'}")
+        if args.audio_only:
+            info("Режим: только аудио")
+        elif args.subs_mode != DEFAULT_SUBS_MODE:
+            info(f"Субтитры: {args.subs_mode}")
+
+        timings: list[tuple[str, float]] = []
+
+        # Temp dir
+        tmpdir = tempfile.mkdtemp(prefix="rusa_")
+        try:
+            started = time.perf_counter()
+            subs_path = step_extract_subtitles(video, args.srt, tmpdir, target_lang)
+
+            # Уточняем голос только если не было --voice и не было --lang
+            if args.voice is None and args.lang is None:
+                detected = detect_language_from_srt(subs_path)
+                if detected:
+                    voice = detected
+                    info(f"Язык определён: {voice}")
                 else:
-                    warn("langdetect не установлен (pip install langdetect), использую голос по умолчанию")
-        if args.sync:
-            subs_path = step_sync_alass(video, subs_path, tmpdir)
-        entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
-        tts_results = step_generate_tts(entries, voice, args.threads, tmpdir)
-        wav_results = step_convert_wav(tts_results, args.speed, tmpdir)
-        voiceover_wav = step_assemble(entries, wav_results, tmpdir)
-        voiceover_lang = lang_code_to_ffprobe_codes(target_lang)[0] if target_lang else "rus"
-        step_mix_output(video, voiceover_wav, args.orig_vol, args.tts_vol,
-                        output, tmpdir,
-                        audio_fmt, audio_bitrate,
-                        normalize, args.audio_only,
-                        voiceover_lang)
+                    if HAS_LANGDETECT:
+                        warn("Не удалось определить язык субтитров, использую голос по умолчанию")
+                    else:
+                        warn("langdetect не установлен (pip install langdetect), использую голос по умолчанию")
+            if args.sync:
+                subs_path = step_sync_alass(video, subs_path, tmpdir)
+            entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
+            if count == 0:
+                die("Не удалось распарсить ни одного субтитра из SRT. Проверьте формат файла.", EXIT_SUBTITLE_ERROR)
+            timings.append(("subtitles", time.perf_counter() - started))
+
+            started = time.perf_counter()
+            tts_results = step_generate_tts(entries, voice, args.threads, tmpdir)
+            timings.append(("tts", time.perf_counter() - started))
+
+            started = time.perf_counter()
+            wav_results = step_convert_wav(tts_results, args.speed, tmpdir, args.threads)
+            timings.append(("wav", time.perf_counter() - started))
+
+            started = time.perf_counter()
+            voiceover_wav = step_assemble(entries, wav_results, tmpdir)
+            timings.append(("assemble", time.perf_counter() - started))
+
+            voiceover_lang = lang_code_to_ffprobe_codes(target_lang)[0] if target_lang else "rus"
+            started = time.perf_counter()
+            step_mix_output(video, voiceover_wav, args.orig_vol, args.tts_vol,
+                            output, tmpdir,
+                            audio_fmt, audio_bitrate,
+                            normalize, args.audio_only,
+                            voiceover_lang, args.subs_mode)
+            timings.append(("mux", time.perf_counter() - started))
+            print_timing_summary(timings)
+        finally:
+            if not args.keep_temp:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            elif os.path.isdir(tmpdir):
+                info(f"\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0435 \u0444\u0430\u0439\u043b\u044b: {tmpdir}")
     finally:
-        if not args.keep_temp:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-        elif os.path.isdir(tmpdir):
-            info(f"\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u044b\u0435 \u0444\u0430\u0439\u043b\u044b: {tmpdir}")
+        _CACHE_DISABLED = prev_cache_disabled
 
 if __name__ == "__main__":
     main()

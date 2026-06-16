@@ -73,8 +73,8 @@ def test_main_rejects_unsupported_lang_without_explicit_voice(monkeypatch, tmp_p
     assert "el" in captured.err
 
 
-def test_step_mix_output_retries_mov_text_subtitles_as_srt(monkeypatch, tmp_path):
-    """mov_text subtitles in source container should be re-encoded for mkv output."""
+def test_step_mix_output_preflights_mov_text_subtitles_to_srt_for_mkv(monkeypatch, tmp_path):
+    """Known-incompatible mov_text subtitles should convert directly for mkv output."""
     video = tmp_path / "input.mp4"
     voiceover = tmp_path / "voiceover.wav"
     output = tmp_path / "output.mkv"
@@ -90,18 +90,10 @@ def test_step_mix_output_retries_mov_text_subtitles_as_srt(monkeypatch, tmp_path
             return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
         if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="mov_text\n", stderr="")
         if "-metadata:s:a:1" in cmd and "-c:s" in cmd:
             subtitle_codec = cmd[cmd.index("-c:s") + 1]
-            if subtitle_codec == "copy":
-                return subprocess.CompletedProcess(
-                    cmd,
-                    1,
-                    stdout=b"",
-                    stderr=(
-                        b"[matroska @ 0x1] Subtitle codec mov_text (94213) is not supported.\n"
-                        b"Could not write header\n"
-                    ),
-                )
             if subtitle_codec == "srt":
                 output.write_bytes(b"ok")
                 return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
@@ -127,7 +119,411 @@ def test_step_mix_output_retries_mov_text_subtitles_as_srt(monkeypatch, tmp_path
         for cmd in calls
         if "-c:s" in cmd and "-metadata:s:a:1" in cmd
     ]
-    assert subtitle_codecs == ["copy", "srt"]
+    assert subtitle_codecs == ["srt"]
+
+
+def test_parser_subs_mode_defaults_to_auto():
+    args = rusa._get_parser().parse_args(["movie.mkv"])
+    assert args.subs_mode == "auto"
+
+
+def test_step_mix_output_subs_mode_drop_skips_subtitle_mapping(monkeypatch, tmp_path):
+    """drop mode must write video without subtitle maps or subtitle codec settings."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if "-metadata:s:a:1" in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        subs_mode="drop",
+    )
+
+    mux_cmd = next(cmd for cmd in calls if "-metadata:s:a:1" in cmd)
+    assert "-map" in mux_cmd
+    assert "0:s?" not in mux_cmd
+    assert "-c:s" not in mux_cmd
+
+
+def test_step_mix_output_subs_mode_copy_fails_on_incompatible_subtitles(monkeypatch, tmp_path, capsys):
+    """copy mode must fail clearly before mux fallback when subtitles cannot be copied."""
+    video = tmp_path / "input.mp4"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="mov_text\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit):
+        rusa.step_mix_output(
+            str(video),
+            str(voiceover),
+            rusa.DEFAULT_ORIG_VOL,
+            rusa.DEFAULT_TTS_VOL,
+            str(output),
+            str(tmp_path),
+            "opus",
+            "64",
+            None,
+            False,
+            subs_mode="copy",
+        )
+
+    captured = capsys.readouterr()
+    assert "--subs-mode convert" in captured.err
+    assert "mov_text" in captured.err
+    mux_cmds = [cmd for cmd in calls if "-metadata:s:a:1" in cmd]
+    assert mux_cmds == []
+
+
+def test_step_mix_output_subs_mode_copy_fails_when_any_mapped_subtitle_stream_is_incompatible(
+    monkeypatch, tmp_path, capsys
+):
+    """copy mode must preflight all mapped subtitle streams, not only the first one."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="subrip\nmov_text\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit):
+        rusa.step_mix_output(
+            str(video),
+            str(voiceover),
+            rusa.DEFAULT_ORIG_VOL,
+            rusa.DEFAULT_TTS_VOL,
+            str(output),
+            str(tmp_path),
+            "opus",
+            "64",
+            None,
+            False,
+            subs_mode="copy",
+        )
+
+    captured = capsys.readouterr()
+    assert "mov_text" in captured.err
+    mux_cmds = [cmd for cmd in calls if "-metadata:s:a:1" in cmd]
+    assert mux_cmds == []
+
+
+def test_step_mix_output_subs_mode_copy_fails_explicitly_when_ffprobe_cannot_verify(
+    monkeypatch, tmp_path, capsys
+):
+    """copy mode should fail clearly when subtitle codec preflight is unavailable."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="probe failed")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit):
+        rusa.step_mix_output(
+            str(video),
+            str(voiceover),
+            rusa.DEFAULT_ORIG_VOL,
+            rusa.DEFAULT_TTS_VOL,
+            str(output),
+            str(tmp_path),
+            "opus",
+            "64",
+            None,
+            False,
+            subs_mode="copy",
+        )
+
+    captured = capsys.readouterr()
+    assert "Не удалось надёжно проверить совместимость" in captured.err
+    mux_cmds = [cmd for cmd in calls if "-metadata:s:a:1" in cmd]
+    assert mux_cmds == []
+
+
+def test_step_mix_output_subs_mode_copy_allows_mkv_compatible_non_text_subtitles(monkeypatch, tmp_path):
+    """copy mode should allow mkv-compatible subtitle codecs beyond the old text-only allowlist."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="hdmv_pgs_subtitle\n", stderr="")
+        if "-metadata:s:a:1" in cmd and "-c:s" in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        subs_mode="copy",
+    )
+
+    subtitle_codecs = [
+        cmd[cmd.index("-c:s") + 1]
+        for cmd in calls
+        if "-c:s" in cmd and "-metadata:s:a:1" in cmd
+    ]
+    assert subtitle_codecs == ["copy"]
+
+
+def test_step_mix_output_subs_mode_convert_uses_srt_for_mkv(monkeypatch, tmp_path):
+    """convert mode should go straight to SRT for mkv output."""
+    video = tmp_path / "input.mp4"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="mov_text\n", stderr="")
+        if "-metadata:s:a:1" in cmd and "-c:s" in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        subs_mode="convert",
+    )
+
+    subtitle_codecs = [
+        cmd[cmd.index("-c:s") + 1]
+        for cmd in calls
+        if "-c:s" in cmd and "-metadata:s:a:1" in cmd
+    ]
+    assert subtitle_codecs == ["srt"]
+
+
+def test_step_mix_output_subs_mode_auto_falls_back_copy_convert_drop(monkeypatch, tmp_path):
+    """auto mode should retain convert -> drop fallback when preflight rules out copy."""
+    video = tmp_path / "input.mp4"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="mov_text\n", stderr="")
+        if "-metadata:s:a:1" in cmd and "-c:s" in cmd:
+            subtitle_codec = cmd[cmd.index("-c:s") + 1]
+            if subtitle_codec == "copy":
+                return subprocess.CompletedProcess(
+                    cmd,
+                    1,
+                    stdout=b"",
+                    stderr=(
+                        b"[matroska @ 0x1] Subtitle codec mov_text (94213) is not supported.\n"
+                        b"Could not write header\n"
+                    ),
+                )
+            if subtitle_codec == "srt":
+                return subprocess.CompletedProcess(
+                    cmd,
+                    1,
+                    stdout=b"",
+                    stderr=b"Subtitle encoder failed\n",
+                )
+        if "-metadata:s:a:1" in cmd and "-c:s" not in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        subs_mode="auto",
+    )
+
+    subtitle_steps = []
+    for cmd in calls:
+        if "-metadata:s:a:1" not in cmd:
+            continue
+        if "-c:s" in cmd:
+            subtitle_steps.append(cmd[cmd.index("-c:s") + 1])
+        else:
+            subtitle_steps.append("drop")
+    assert subtitle_steps == ["srt", "drop"]
+
+
+def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompatible(monkeypatch, tmp_path):
+    """auto mode should plan around incompatible mapped subtitle streams before mux retry."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="subrip\nmov_text\n", stderr="")
+        if "-metadata:s:a:1" in cmd and "-c:s" in cmd:
+            subtitle_codec = cmd[cmd.index("-c:s") + 1]
+            if subtitle_codec == "srt":
+                return subprocess.CompletedProcess(
+                    cmd,
+                    1,
+                    stdout=b"",
+                    stderr=b"Subtitle encoder failed\n",
+                )
+        if "-metadata:s:a:1" in cmd and "-c:s" not in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        subs_mode="auto",
+    )
+
+    subtitle_steps = []
+    for cmd in calls:
+        if "-metadata:s:a:1" not in cmd:
+            continue
+        if "-c:s" in cmd:
+            subtitle_steps.append(cmd[cmd.index("-c:s") + 1])
+        else:
+            subtitle_steps.append("drop")
+    assert subtitle_steps == ["srt", "drop"]
 
 
 def test_step_mix_output_codec_error_lists_alternatives(monkeypatch, tmp_path, capsys):
@@ -149,7 +545,7 @@ def test_step_mix_output_codec_error_lists_alternatives(monkeypatch, tmp_path, c
     monkeypatch.setattr(rusa.subprocess, "run", fake_run)
     monkeypatch.setattr(rusa, "_check_ffmpeg_codec", fake_check)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         rusa.step_mix_output(
             str(video),
             str(voiceover),
@@ -163,5 +559,68 @@ def test_step_mix_output_codec_error_lists_alternatives(monkeypatch, tmp_path, c
             False,
         )
 
+    assert exc.value.code == rusa.EXIT_CODEC_ERROR
     captured = capsys.readouterr()
     assert "--aac" in captured.err or "--mp3" in captured.err or "--ac3" in captured.err
+
+
+def test_main_invalid_srt_returns_stable_exit_code(monkeypatch, tmp_path):
+    """Invalid or empty subtitle files should fail with subtitle-specific exit code in CLI flow."""
+    video = tmp_path / "movie.mkv"
+    srt = tmp_path / "broken.srt"
+    video.write_bytes(b"video")
+    srt.write_text("this is not an srt file", encoding="utf-8")
+
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setattr(
+        rusa.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr=""),
+    )
+    monkeypatch.setattr(sys, "argv", ["rusa", "-s", str(srt), str(video)])
+
+    with pytest.raises(SystemExit) as exc:
+        rusa.main()
+
+    assert exc.value.code == rusa.EXIT_SUBTITLE_ERROR
+
+
+def test_subtitle_container_mismatch_message_is_actionable(monkeypatch, tmp_path, capsys):
+    """Subtitle/container mismatch errors should tell the user what to do next."""
+    video = tmp_path / "input.mp4"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+
+    def fake_run(cmd, **kwargs):
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="mov_text\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as exc:
+        rusa.step_mix_output(
+            str(video),
+            str(voiceover),
+            rusa.DEFAULT_ORIG_VOL,
+            rusa.DEFAULT_TTS_VOL,
+            str(output),
+            str(tmp_path),
+            "opus",
+            "64",
+            None,
+            False,
+            subs_mode="copy",
+        )
+
+    assert exc.value.code == rusa.EXIT_SUBTITLE_ERROR
+    captured = capsys.readouterr()
+    assert "--subs-mode convert" in captured.err
+    assert "--subs-mode drop" in captured.err

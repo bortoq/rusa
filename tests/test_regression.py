@@ -15,6 +15,7 @@ PROJECT_DIR = TESTS_DIR.parent
 # ── Video-based integration tests ─────────────────────────────────
 
 @pytest.mark.slow
+@pytest.mark.live_tts
 def test_full_pipeline_with_srt(fixtures_ready, tmp_path):
     """Full pipeline: rusa on test_video.mkv with ru_subtitles.srt.
 
@@ -93,6 +94,7 @@ def test_full_pipeline_with_srt(fixtures_ready, tmp_path):
 
 
 @pytest.mark.slow
+@pytest.mark.live_tts
 def test_overlap_regression(fixtures_ready, tmp_path):
     """Deliberately use tightly-spaced subtitles to trigger overlap cascade.
 
@@ -228,8 +230,58 @@ def test_extract_from_external_srt():
     shutil.rmtree(str(tmp_path), ignore_errors=True)
 
 
+def test_main_prints_timing_summary(monkeypatch, tmp_path, capsys):
+    """Successful main() run should print a compact per-stage timing summary."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"video")
+
+    monkeypatch.setattr(sys, "argv", ["rusa", str(video)])
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["python3", "-m", "edge_tts"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr="")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+    monkeypatch.setattr(rusa, "step_extract_subtitles", lambda *args, **kwargs: str(tmp_path / "subs.srt"))
+    monkeypatch.setattr(rusa, "detect_language_from_srt", lambda *args, **kwargs: "ru-RU-SvetlanaNeural")
+    monkeypatch.setattr(rusa, "step_parse_srt", lambda *args, **kwargs: ([{"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "hi"}], 1))
+    monkeypatch.setattr(rusa, "step_generate_tts", lambda *args, **kwargs: [(1, str(tmp_path / "line.mp3"))])
+    monkeypatch.setattr(rusa, "step_convert_wav", lambda *args, **kwargs: [(1, str(tmp_path / "line.wav"), 120.0)])
+    monkeypatch.setattr(rusa, "step_assemble", lambda *args, **kwargs: str(tmp_path / "voiceover.wav"))
+    monkeypatch.setattr(rusa, "step_mix_output", lambda *args, **kwargs: None)
+
+    ticks = iter([0.0, 1.0, 1.0, 3.5, 3.5, 4.0, 4.0, 5.25, 5.25, 6.0])
+    monkeypatch.setattr(rusa.time, "perf_counter", lambda: next(ticks))
+
+    rusa.main()
+
+    out = capsys.readouterr().out
+    assert "Timing" in out
+    assert "subtitles: 1.0s" in out
+    assert "tts: 2.5s" in out
+    assert "wav: 0.5s" in out
+    assert "assemble: 1.2s" in out
+    assert "mux: 0.8s" in out
+
+
+def test_live_tts_tests_are_explicitly_marked():
+    """Every regression test that depends on live edge-tts must declare live_tts marker."""
+    live_tests = [
+        test_full_pipeline_with_srt,
+        test_overlap_regression,
+        test_wav_header_after_mix,
+        test_wav_preserves_speech,
+    ]
+    for func in live_tests:
+        marker_names = {mark.name for mark in getattr(func, "pytestmark", [])}
+        assert "live_tts" in marker_names, f"{func.__name__} must be marked live_tts"
+
+
 # ── WAV header integrity tests ──────────────────────────────────
 
+@pytest.mark.live_tts
 def test_wav_header_after_mix(fixtures_ready, tmp_path):
     """After mixing, the WAV should have a valid, non-trunctated header."""
     if not edge_tts_ready():
@@ -302,6 +354,7 @@ def test_voice_resolution_with_english_srt(fixtures_ready, tmp_path):
         assert detected is None
 
 
+@pytest.mark.live_tts
 def test_wav_preserves_speech(fixtures_ready, tmp_path):
     """WAV conversion must NOT destroy speech (stop_periods regression).
 
