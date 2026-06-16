@@ -616,15 +616,11 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             f.write(b"\x00" * n)
             remaining -= n
 
-    cur_frame = 0
-    overlaps = 0
     actual_max_frame = 0
     with open(out_path, "rb+") as f:
         for i, seg in enumerate(segments, 1):
             sf = int(seg["start_ms"] * WAV_FRAMERATE / 1000)
-            target = max(cur_frame, sf)
-            if target > sf:
-                overlaps += 1
+            target = sf
             offset = WAV_HEADER_SIZE + target * WAV_BPF
             with wave.open(seg["path"], "rb") as w:
                 frame_data = w.readframes(w.getnframes())
@@ -633,7 +629,6 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             seg_end_frame = target + (len(frame_data) // WAV_BPF)
             if seg_end_frame > actual_max_frame:
                 actual_max_frame = seg_end_frame
-            cur_frame = seg_end_frame
             if not HAS_TQDM and (i % 100 == 0 or i == len(segments)):
                 print(f"    ... {i}/{len(segments)}")
 
@@ -654,18 +649,9 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             f.seek(40)
             f.write(struct.pack("<I", actual_data_bytes))
 
-    if overlaps:
-        pct = overlaps * 100 // len(segments)
-        print(f"  \u041f\u0435\u0440\u0435\u043a\u0440\u044b\u0442\u0438\u0439: {overlaps} ({pct}%)")
-        if pct > 20:
-            warn("\u041c\u043d\u043e\u0433\u043e \u043f\u0435\u0440\u0435\u043a\u0440\u044b\u0442\u0438\u0439. "
-                 "\u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 --speed \u0431\u043e\u043b\u044c\u0448\u0435 "
-                 "\u0438\u043b\u0438 --voice \u0441 \u0431\u043e\u043b\u0435\u0435 \u0431\u044b\u0441\u0442\u0440\u044b\u043c \u043f\u0440\u043e\u0438\u0437\u043d\u043e\u0448\u0435\u043d\u0438\u0435\u043c")
     print(f"  Voiceover: {os.path.getsize(out_path) / 1024 / 1024:.0f} MB")
-    ok("Voiceover \u0441\u043e\u0431\u0440\u0430\u043d")
+    ok("Voiceover собрано")
     return out_path
-
-# ──────────────────────────────────────────────────────────────────────────
 # \u0428\u0430\u0433 7: \u041c\u0438\u043a\u0441 + \u0432\u044b\u0432\u043e\u0434
 # ──────────────────────────────────────────────────────────────────────────
 

@@ -157,3 +157,70 @@ def test_assemble_large_number_of_segments(tmp_path):
         max_val = max(abs(struct.unpack("<h", raw[j:j+2])[0])
                       for j in range(0, min(10000, len(raw)), 2))
         assert max_val > 100, "All audio is silence"
+
+
+def test_assemble_no_cascade_delay(tmp_path):
+    """Segments must NOT be shifted forward when overlapping (regression for delay bug).
+
+    Previously, target = max(cur_frame, sf) caused cascading delay:
+    long segment 1 (3s) would push segment 2 (at 1s) forward to 3s.
+    Now: segment 2 always writes at its subtitle start_ms, overwriting tail of seg 1.
+    """
+    entries = [
+        {"idx": 1, "start_ms": 0, "end_ms": 5000, "text": "Long first line"},
+        {"idx": 2, "start_ms": 1000, "end_ms": 3000, "text": "Second line"},
+        {"idx": 3, "start_ms": 5000, "end_ms": 7000, "text": "Third line"},
+    ]
+    # Segment 1 is 4000ms long (4x longer than the gap)
+    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 4000, freq=300)
+    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 1000, freq=500)
+    wav3 = _make_sine_wav(str(tmp_path / "batch_0003.wav"), 1000, freq=700)
+
+    wav_results = [
+        (1, wav1, 4000.0),
+        (2, wav2, 1000.0),
+        (3, wav3, 1000.0),
+    ]
+
+    out = rusa.step_assemble(entries, wav_results, str(tmp_path))
+
+    with wave.open(out, "rb") as w:
+        nframes = w.getnframes()
+        framerate = w.getframerate()
+
+        # Segment 2 MUST start at ~1000ms (its subtitle start_ms), not shifted
+        pos_seg2 = int(1.0 * framerate)  # 1s = 1000ms
+        w.setpos(pos_seg2)
+        data = w.readframes(20)
+        max_val_seg2 = max(
+            abs(struct.unpack("<h", data[j:j+2])[0])
+            for j in range(0, min(40, len(data)), 2)
+        )
+        assert max_val_seg2 > 100, (
+            f"Seg 2 should start at 1000ms but no audio found (max={max_val_seg2}). "
+            "Cascading delay bug present!"
+        )
+
+        # Segment 3 should NOT have been shifted either (starts at 5000ms)
+        pos_seg3 = int(5.0 * framerate)
+        if pos_seg3 < nframes:
+            w.setpos(pos_seg3)
+            data = w.readframes(20)
+            max_val_seg3 = max(
+                abs(struct.unpack("<h", data[j:j+2])[0])
+                for j in range(0, min(40, len(data)), 2)
+            )
+            assert max_val_seg3 > 100, (
+                f"Seg 3 should start at 5000ms but no audio found (max={max_val_seg3})"
+            )
+
+        # Segment 1's tail at 2000ms-4000ms should be partially overwritten by seg 2
+        # But seg 1 should still have audio at 500ms (before seg 2 starts)
+        pos_seg1 = int(0.5 * framerate)
+        w.setpos(pos_seg1)
+        data = w.readframes(20)
+        max_val_seg1 = max(
+            abs(struct.unpack("<h", data[j:j+2])[0])
+            for j in range(0, min(40, len(data)), 2)
+        )
+        assert max_val_seg1 > 100, "Seg 1 should have audio at 500ms"
