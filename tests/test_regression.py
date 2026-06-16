@@ -290,3 +290,56 @@ def test_voice_resolution_with_english_srt(fixtures_ready, tmp_path):
     else:
         # Without langdetect, plain .srt returns None
         assert detected is None
+
+
+def test_wav_preserves_speech(fixtures_ready, tmp_path):
+    """WAV conversion must NOT destroy speech (stop_periods regression).
+
+    A multi-sentence phrase must produce a WAV file longer than 1000ms
+    with amplitude > 1000 (i.e., audible speech preserved).
+    """
+    tts_dir = tmp_path / "tts"
+    tts_dir.mkdir()
+    from tests.conftest import make_sine_wav
+
+    # Generate TTS for a multi-sentence phrase
+    text = "Сезам, откройся. Проезжайте. Спасибо."
+    mp3 = str(tts_dir / "test.mp3")
+    rc = subprocess.run(
+        ["edge-tts", "--voice", "ru-RU-SvetlanaNeural",
+         "--text", text, "--write-media", mp3],
+        capture_output=True, timeout=60, check=False
+    )
+    if rc.returncode != 0 or not os.path.isfile(mp3) or os.path.getsize(mp3) < 100:
+        pytest.skip("edge-tts unavailable for speech preservation test")
+
+    # Convert using the EXACT parameters from step_convert_wav
+    wav = str(tmp_path / "test.wav")
+    filter_str = (
+        "atempo=1.5,"
+        "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01"
+    )
+    rc = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", mp3,
+         "-af", filter_str, "-ac", "2", "-ar", "48000",
+         "-sample_fmt", "s16", wav],
+        check=False, capture_output=True
+    )
+    assert rc.returncode == 0, f"WAV conversion failed: {rc.stderr.decode()}"
+    assert os.path.isfile(wav) and os.path.getsize(wav) > 44, "WAV file missing"
+
+    with wave.open(wav, "rb") as w:
+        frames = w.getnframes()
+        duration_ms = frames / 48000 * 1000
+        assert duration_ms > 1000, (
+            f"WAV too short ({duration_ms:.0f}ms): stop_periods destroyed speech!"
+        )
+        raw = w.readframes(min(frames, 48000 * 10))
+        max_amp = max(
+            abs(struct.unpack("<h", raw[j:j+2])[0])
+            for j in range(0, min(len(raw), 48000 * 8), 2)
+        )
+        assert max_amp > 1000, (
+            f"WAV max amplitude {max_amp}: speech was destroyed by silenceremove!"
+        )
+        print(f"  Speech test: {duration_ms:.0f}ms, max_amp={max_amp}, OK")
