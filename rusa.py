@@ -543,10 +543,11 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
     iterator = tqdm(tts_results, desc="  WAV", unit="sub") if HAS_TQDM else tts_results
     for idx, mp3_path in iterator:
         wav_path = os.path.join(wav_dir, f"batch_{idx:04d}.wav")
-        # atempo + trim leading silence only (stop_periods breaks multi-sentence audio)
+        # atempo + trim silence from both ends (start + stop)
         filter_str = (
             f"{tempo_filter},"
-            f"silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01"
+            f"silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01:"
+            f"stop_periods=1:stop_threshold=0.0018:stop_silence=0.01"
         )
         rc = subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error", "-i", mp3_path,
@@ -616,11 +617,15 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             f.write(b"\x00" * n)
             remaining -= n
 
+    cur_frame = 0
+    overlaps = 0
     actual_max_frame = 0
     with open(out_path, "rb+") as f:
         for i, seg in enumerate(segments, 1):
             sf = int(seg["start_ms"] * WAV_FRAMERATE / 1000)
-            target = sf
+            target = max(cur_frame, sf)
+            if target > sf:
+                overlaps += 1
             offset = WAV_HEADER_SIZE + target * WAV_BPF
             with wave.open(seg["path"], "rb") as w:
                 frame_data = w.readframes(w.getnframes())
@@ -629,6 +634,7 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             seg_end_frame = target + (len(frame_data) // WAV_BPF)
             if seg_end_frame > actual_max_frame:
                 actual_max_frame = seg_end_frame
+            cur_frame = seg_end_frame
             if not HAS_TQDM and (i % 100 == 0 or i == len(segments)):
                 print(f"    ... {i}/{len(segments)}")
 
@@ -648,6 +654,14 @@ def step_assemble(entries: list[Entry], wav_results: list[tuple[int, str, float]
             f.write(struct.pack("<I", 36 + actual_data_bytes))
             f.seek(40)
             f.write(struct.pack("<I", actual_data_bytes))
+
+    if overlaps:
+        pct = overlaps * 100 // len(segments)
+        print(f"  Перекрытий: {overlaps} ({pct}%)")
+        if pct > 20:
+            warn("Много перекрытий. "
+                 "Попробуйте --speed больше "
+                 "или --voice с более быстрым произношением")
 
     print(f"  Voiceover: {os.path.getsize(out_path) / 1024 / 1024:.0f} MB")
     ok("Voiceover собрано")

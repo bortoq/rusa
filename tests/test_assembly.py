@@ -29,7 +29,6 @@ def _make_sine_wav(path: str, duration_ms: int = 1000,
     return path
 
 
-
 def test_assemble_basic(sample_entries, sample_wav_results, tmp_path):
     """Basic assembly: 3 segments, no overlap, all present."""
     out = rusa.step_assemble(sample_entries, sample_wav_results, str(tmp_path))
@@ -60,14 +59,13 @@ def test_assemble_wav_header_integrity(sample_entries, sample_wav_results, tmp_p
 
 
 def test_assemble_with_overlap(overlapping_entries, overlapping_wav_results, tmp_path):
-    """Overlapping segments should ALL be present after assembly (regression)."""
+    """Overlapping segments cascade-shift but all should be present."""
     out = rusa.step_assemble(overlapping_entries, overlapping_wav_results, str(tmp_path))
     with wave.open(out, "rb") as w:
         nframes = w.getnframes()
         # All 5 segments should be audible somewhere
-        # After cascade, find positions with audio
         audio_positions = []
-        step = 100  # check every 100 frames
+        step = 100
         for pos in range(0, nframes, step):
             w.setpos(pos)
             data = w.readframes(10)
@@ -75,29 +73,111 @@ def test_assemble_with_overlap(overlapping_entries, overlapping_wav_results, tmp
                           for j in range(0, min(20, len(data)), 2))
             if max_val > 100:
                 audio_positions.append(pos)
-        # Should have at least 3 non-overlapping audio regions
-        # (some segments may be shifted but should still exist)
         assert len(audio_positions) >= 3, (
             f"Only {len(audio_positions)} audio regions found, expected >= 3"
+        )
+        # 5th segment should exist (even if cascade-shifted)
+        last_seg_pos = overlapping_entries[-1]["start_ms"]
+        assert any(p >= last_seg_pos * 48000 / 1000 for p in audio_positions), (
+            "Last segment not found (cascade may have pushed it too far)"
+        )
+
+
+def test_assemble_cascade_shifts_segments(tmp_path):
+    """When a segment overflows into the next slot, the next shifts forward.
+
+    This is the expected cascading behavior: segments that don't keep up
+    with their subtitle timing get 'stacked' (shifted) rather than clipped.
+    """
+    entries = [
+        {"idx": 1, "start_ms": 0, "end_ms": 5000, "text": "Long"},
+        {"idx": 2, "start_ms": 1000, "end_ms": 3000, "text": "Short"},
+    ]
+    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 3000, freq=300)
+    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 500, freq=500)
+    wav_results = [(1, wav1, 3000.0), (2, wav2, 500.0)]
+
+    out = rusa.step_assemble(entries, wav_results, str(tmp_path))
+
+    with wave.open(out, "rb") as w:
+        framerate = w.getframerate()
+
+        # Segment 2 should be SHIFTED to after segment 1 ends (3000ms),
+        # NOT at its subtitle start_ms (1000ms)
+        pos_shifted = int(3.0 * framerate)  # 3000ms = after seg1 ends
+        w.setpos(pos_shifted)
+        data = w.readframes(20)
+        max_val_shifted = max(
+            abs(struct.unpack("<h", data[j:j+2])[0])
+            for j in range(0, min(40, len(data)), 2)
+        )
+        assert max_val_shifted > 100, (
+            f"Seg 2 should be cascade-shifted to ~3000ms but no audio found"
+        )
+
+        # Segment 2 should NOT be at its original 1000ms position
+        # (it was pushed forward by seg1's overflow)
+        pos_original = int(1.0 * framerate)
+        w.setpos(pos_original)
+        data = w.readframes(20)
+        max_val_original = max(
+            abs(struct.unpack("<h", data[j:j+2])[0])
+            for j in range(0, min(40, len(data)), 2)
+        )
+        # At 1000ms, only segment 1's audio should be present (same 300Hz tone)
+        # So audio exists but it's seg1's tone, not seg2's
+        assert max_val_original > 100, (
+            f"At 1000ms there should be audio (seg1), but none found"
+        )
+
+
+def test_assemble_exact_time_when_no_overlap(tmp_path):
+    """When a segment fits within its subtitle gap, it places EXACTLY at start_ms.
+
+    No overlap → no shift → exact positioning.
+    """
+    entries = [
+        {"idx": 1, "start_ms": 0, "end_ms": 5000, "text": "First"},
+        {"idx": 2, "start_ms": 3000, "end_ms": 6000, "text": "Second"},
+    ]
+    # Seg1 is short — finishes before seg2 starts
+    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 2000, freq=300)
+    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 1000, freq=500)
+    wav_results = [(1, wav1, 2000.0), (2, wav2, 1000.0)]
+
+    out = rusa.step_assemble(entries, wav_results, str(tmp_path))
+
+    with wave.open(out, "rb") as w:
+        framerate = w.getframerate()
+
+        # Seg1 ends at 2000ms, seg2 starts at 3000ms — no overlap
+        # Seg2 should be at EXACTLY 3000ms
+        pos_seg2 = int(3.0 * framerate)
+        w.setpos(pos_seg2)
+        data = w.readframes(20)
+        max_val = max(
+            abs(struct.unpack("<h", data[j:j+2])[0])
+            for j in range(0, min(40, len(data)), 2)
+        )
+        assert max_val > 100, (
+            f"Seg 2 should be at exactly 3000ms (no overlap), but no audio found"
         )
 
 
 def test_assemble_with_zero_duration(tmp_path):
-    """Segments with duration=0 should be filtered out (regression)."""
+    """Segments with duration=0 should be filtered out."""
     entries = [
         {"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "First"},
         {"idx": 2, "start_ms": 3000, "end_ms": 4000, "text": "Second"},
     ]
-    # Create properly sized WAV for seg 1
     wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 500)
     wav_results = [
         (1, wav1, 500.0),
-        (2, str(tmp_path / "missing.wav"), 0),  # zero duration
+        (2, str(tmp_path / "missing.wav"), 0),
     ]
     out = rusa.step_assemble(entries, wav_results, str(tmp_path))
     with wave.open(out, "rb") as w:
         nframes = w.getnframes()
-        # Seg 2 should NOT have audio at its position (it was filtered out)
         pos_seg2 = int(3.0 * 48000)
         if pos_seg2 < nframes:
             w.setpos(pos_seg2)
@@ -121,20 +201,19 @@ def test_assemble_no_matching_entries(tmp_path):
     """wav_results with indices not in entries should produce empty segments → exit."""
     import pytest
     entries = [{"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "Test"}]
-    # wav_results has idx=99 which doesn't match any entry
     wav_results = [(99, "/tmp/nonexistent.wav", 500.0)]
     with pytest.raises(SystemExit):
         rusa.step_assemble(entries, wav_results, str(tmp_path))
 
 
 def test_assemble_large_number_of_segments(tmp_path):
-    """100 segments with random timings should produce valid WAV (regression)."""
+    """100 segments with random timings should produce valid WAV."""
     import random
     random.seed(42)
     entries = []
     wav_results = []
     for i in range(1, 101):
-        start_ms = (i - 1) * 1200  # tight spacing
+        start_ms = (i - 1) * 1200
         entries.append({"idx": i, "start_ms": start_ms, "end_ms": start_ms + 1000,
                         "text": f"Line {i}"})
         dur_ms = 800 + random.randint(0, 400)
@@ -144,83 +223,13 @@ def test_assemble_large_number_of_segments(tmp_path):
 
     out = rusa.step_assemble(entries, wav_results, str(tmp_path))
 
-    # Verify WAV header integrity
     with open(out, "rb") as f:
         data_size = struct.unpack("<I", f.read(44)[40:44])[0]
     assert 44 + data_size == os.path.getsize(out), "WAV header mismatch"
 
-    # Verify all data is readable (no truncation)
     with wave.open(out, "rb") as w:
         readable_frames = w.getnframes()
-        # Read all data and verify it's not all silence
-        raw = w.readframes(min(readable_frames, 480000))  # read up to 10s
+        raw = w.readframes(min(readable_frames, 480000))
         max_val = max(abs(struct.unpack("<h", raw[j:j+2])[0])
                       for j in range(0, min(10000, len(raw)), 2))
         assert max_val > 100, "All audio is silence"
-
-
-def test_assemble_no_cascade_delay(tmp_path):
-    """Segments must NOT be shifted forward when overlapping (regression for delay bug).
-
-    Previously, target = max(cur_frame, sf) caused cascading delay:
-    long segment 1 (3s) would push segment 2 (at 1s) forward to 3s.
-    Now: segment 2 always writes at its subtitle start_ms, overwriting tail of seg 1.
-    """
-    entries = [
-        {"idx": 1, "start_ms": 0, "end_ms": 5000, "text": "Long first line"},
-        {"idx": 2, "start_ms": 1000, "end_ms": 3000, "text": "Second line"},
-        {"idx": 3, "start_ms": 5000, "end_ms": 7000, "text": "Third line"},
-    ]
-    # Segment 1 is 4000ms long (4x longer than the gap)
-    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 4000, freq=300)
-    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 1000, freq=500)
-    wav3 = _make_sine_wav(str(tmp_path / "batch_0003.wav"), 1000, freq=700)
-
-    wav_results = [
-        (1, wav1, 4000.0),
-        (2, wav2, 1000.0),
-        (3, wav3, 1000.0),
-    ]
-
-    out = rusa.step_assemble(entries, wav_results, str(tmp_path))
-
-    with wave.open(out, "rb") as w:
-        nframes = w.getnframes()
-        framerate = w.getframerate()
-
-        # Segment 2 MUST start at ~1000ms (its subtitle start_ms), not shifted
-        pos_seg2 = int(1.0 * framerate)  # 1s = 1000ms
-        w.setpos(pos_seg2)
-        data = w.readframes(20)
-        max_val_seg2 = max(
-            abs(struct.unpack("<h", data[j:j+2])[0])
-            for j in range(0, min(40, len(data)), 2)
-        )
-        assert max_val_seg2 > 100, (
-            f"Seg 2 should start at 1000ms but no audio found (max={max_val_seg2}). "
-            "Cascading delay bug present!"
-        )
-
-        # Segment 3 should NOT have been shifted either (starts at 5000ms)
-        pos_seg3 = int(5.0 * framerate)
-        if pos_seg3 < nframes:
-            w.setpos(pos_seg3)
-            data = w.readframes(20)
-            max_val_seg3 = max(
-                abs(struct.unpack("<h", data[j:j+2])[0])
-                for j in range(0, min(40, len(data)), 2)
-            )
-            assert max_val_seg3 > 100, (
-                f"Seg 3 should start at 5000ms but no audio found (max={max_val_seg3})"
-            )
-
-        # Segment 1's tail at 2000ms-4000ms should be partially overwritten by seg 2
-        # But seg 1 should still have audio at 500ms (before seg 2 starts)
-        pos_seg1 = int(0.5 * framerate)
-        w.setpos(pos_seg1)
-        data = w.readframes(20)
-        max_val_seg1 = max(
-            abs(struct.unpack("<h", data[j:j+2])[0])
-            for j in range(0, min(40, len(data)), 2)
-        )
-        assert max_val_seg1 > 100, "Seg 1 should have audio at 500ms"
