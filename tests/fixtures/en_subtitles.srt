@@ -1,0 +1,40 @@
+1
+00:00:00,000 --> 00:00:05,330
+The Universal Declaration of Human Rights is a milestone document in the history of human rights.
+
+2
+00:00:05,330 --> 00:00:10,660
+Drafted by representatives with different legal and cultural backgrounds from all regions of the world,
+
+3
+00:00:10,660 --> 00:00:15,991
+the declaration was proclaimed by the United Nations General Assembly in Paris on ten December nineteen forty eight.
+
+4
+00:00:15,991 --> 00:00:21,321
+It sets out for the first time fundamental human rights to be universally protected.
+
+5
+00:00:21,321 --> 00:00:26,652
+All human beings are born free and equal in dignity and rights.
+
+6
+00:00:26,652 --> 00:00:31,982
+They are endowed with reason and conscience and should act towards one another in a spirit of brotherhood.
+
+7
+00:00:31,982 --> 00:00:37,312
+Everyone has the right to life, liberty and security of person.
+
+8
+00:00:37,312 --> 00:00:42,643
+No one shall be held in slavery or servitude.
+
+9
+00:00:42,643 --> 00:00:47,973
+Everyone has the right to freedom of thought, conscience and religion.
+
+10
+00:00:47,973 --> 00:00:53,304
+Everyone has the right to freedom of opinion and expression.
+

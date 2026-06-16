@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Temp / build
+tmp/
+*.swp
+*.swo
+.DS_Store
+
+# Test fixtures (generated)
+tests/fixtures/*.mp3
+tests/fixtures/*.mkv
+tests/fixtures/*.wav
+
+# Keep small text fixtures
+!tests/fixtures/*.srt
