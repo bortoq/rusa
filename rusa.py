@@ -612,7 +612,7 @@ def step_generate_tts(entries: list[Entry], voice: str, threads: int,
 # ──────────────────────────────────────────────────────────────────────────
 
 def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
-                     tmpdir: str) -> list[tuple[int, str, float]]:
+                     tmpdir: str, threads: int = DEFAULT_THREADS) -> list[tuple[int, str, float]]:
     info(f"\u041a\u043e\u043d\u0432\u0435\u0440\u0442\u0430\u0446\u0438\u044f MP3 \u2192 WAV + atempo={speed}x...")
     wav_dir = os.path.join(tmpdir, "wav")
     os.makedirs(wav_dir, exist_ok=True)
@@ -631,8 +631,8 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
     else:
         tempo_filter = f"atempo={speed_val:.6f}"
 
-    iterator = tqdm(tts_results, desc="  WAV", unit="sub") if HAS_TQDM else tts_results
-    for idx, mp3_path in iterator:
+    def convert_one(item: tuple[int, str]) -> tuple[int, str, float] | None:
+        idx, mp3_path = item
         wav_path = os.path.join(wav_dir, f"batch_{idx:04d}.wav")
         # atempo + trim leading AND trailing silence via areverse trick
         # (areverse + start_periods reliably trims trailing silence without destroying speech)
@@ -657,13 +657,35 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
                     duration_ms = frames / WAV_FRAMERATE * 1000
                 # Sanity check: reject near-silent files (duration < 50ms)
                 if duration_ms >= 50:
-                    results.append((idx, wav_path, duration_ms))
+                    return (idx, wav_path, duration_ms)
                 else:
                     warn(f"  #{idx} too short ({duration_ms:.0f}ms), skipped")
             except Exception:
-                results.append((idx, wav_path, 0))
+                return (idx, wav_path, 0)
         else:
             warn(f"  #{idx} \u043d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043a\u043e\u043d\u0432\u0435\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c")
+        return None
+
+    total = len(tts_results)
+    done = 0
+    pbar = tqdm(total=total, desc="  WAV", unit="sub") if HAS_TQDM else None
+
+    with ThreadPoolExecutor(max_workers=max(1, threads)) as ex:
+        futures = {ex.submit(convert_one, item): item[0] for item in tts_results}
+        for f in as_completed(futures):
+            done += 1
+            converted = f.result()
+            if converted is not None:
+                results.append(converted)
+            if pbar:
+                pbar.update(1)
+            elif done % 30 == 0 or done == total:
+                print(f"  [{done}/{total}]")
+
+    if pbar:
+        pbar.close()
+
+    results.sort(key=lambda item: item[0])
     ok(f"WAV (sped {speed}x): {len(results)}")
     return results
 
