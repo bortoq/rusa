@@ -543,10 +543,14 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str,
     iterator = tqdm(tts_results, desc="  WAV", unit="sub") if HAS_TQDM else tts_results
     for idx, mp3_path in iterator:
         wav_path = os.path.join(wav_dir, f"batch_{idx:04d}.wav")
-        # atempo + trim leading silence only (stop_periods destroys multi-sentence speech)
+        # atempo + trim leading AND trailing silence via areverse trick
+        # (areverse + start_periods reliably trims trailing silence without destroying speech)
         filter_str = (
             f"{tempo_filter},"
-            f"silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01"
+            f"silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+            f"areverse,"
+            f"silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+            f"areverse"
         )
         rc = subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error", "-i", mp3_path,

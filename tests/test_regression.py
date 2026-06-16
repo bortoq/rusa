@@ -315,9 +315,13 @@ def test_wav_preserves_speech(fixtures_ready, tmp_path):
 
     # Convert using the EXACT parameters from step_convert_wav
     wav = str(tmp_path / "test.wav")
+    # Must match the filter in rusa.step_convert_wav (areverse dual-trim)
     filter_str = (
         "atempo=1.5,"
-        "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01"
+        "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+        "areverse,"
+        "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+        "areverse"
     )
     rc = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", mp3,
@@ -342,4 +346,17 @@ def test_wav_preserves_speech(fixtures_ready, tmp_path):
         assert max_amp > 1000, (
             f"WAV max amplitude {max_amp}: speech was destroyed by silenceremove!"
         )
-        print(f"  Speech test: {duration_ms:.0f}ms, max_amp={max_amp}, OK")
+        # Verify trailing silence was trimmed (< 100ms remaining)
+        # Find last sample with amplitude > 50
+        speech_end = None
+        for j in range(0, len(raw), 4):
+            s = abs(struct.unpack("<h", raw[j:j+2])[0])
+            if s > 50:
+                speech_end = j / 4
+        if speech_end is not None:
+            trail_ms = duration_ms - (speech_end / 48000 * 1000)
+            assert trail_ms < 100, (
+                f"Trailing silence not trimmed: {trail_ms:.0f}ms (>100ms)"
+            )
+        print(f"  Speech test: {duration_ms:.0f}ms, max_amp={max_amp}, "
+              f"trail trimmed, OK")
