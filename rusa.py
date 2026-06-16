@@ -78,7 +78,71 @@ LANG_VOICE_MAP = {
     "nb": "nb-NO-PernilleNeural",
     "cs": "cs-CZ-VlastaNeural",
     "hu": "hu-HU-NoemiNeural",
+    "he": "he-IL-HilaNeural",
 }
+
+# Map ISO 639-1 → possible ffprobe language codes (ISO 639-2/B and 639-1)
+LANG_FFPROBE_MAP: dict[str, list[str]] = {
+    "ru": ["rus", "ru", "russian"],
+    "en": ["eng", "en", "english"],
+    "he": ["heb", "he", "hebrew"],
+    "de": ["deu", "ger", "de", "german"],
+    "fr": ["fra", "fre", "fr", "french"],
+    "es": ["spa", "es", "spanish"],
+    "it": ["ita", "it", "italian"],
+    "pt": ["por", "pt", "portuguese"],
+    "ja": ["jpn", "ja", "japanese"],
+    "ko": ["kor", "ko", "korean"],
+    "zh": ["zho", "chi", "zh", "chinese"],
+    "ar": ["ara", "ar", "arabic"],
+    "tr": ["tur", "tr", "turkish"],
+    "nl": ["nld", "dut", "nl", "dutch"],
+    "pl": ["pol", "pl", "polish"],
+    "sv": ["swe", "sv", "swedish"],
+    "da": ["dan", "da", "danish"],
+    "fi": ["fin", "fi", "finnish"],
+    "nb": ["nor", "nb", "norwegian"],
+    "cs": ["ces", "cze", "cs", "czech"],
+    "hu": ["hun", "hu", "hungarian"],
+}
+
+
+def voice_to_lang_code(voice: str) -> str:
+    """Extract ISO 639-1 language code from an edge-tts voice name.
+    
+    'he-IL-HilaNeural' → 'he'
+    'ru-RU-SvetlanaNeural' → 'ru'
+    """
+    return voice[:2].lower()
+
+
+def lang_code_to_ffprobe_codes(lang: str) -> list[str]:
+    """Return possible ffprobe language codes for a given ISO 639-1 code."""
+    return LANG_FFPROBE_MAP.get(lang, [lang])
+
+
+# Reverse map: any ffprobe code -> ISO 639-1
+FFPROBE_TO_ISO6391: dict[str, str] = {}
+for _iso2, _codes in LANG_FFPROBE_MAP.items():
+    for _c in _codes:
+        FFPROBE_TO_ISO6391[_c] = _iso2
+
+
+def normalize_lang_code(code: str) -> str:
+    """Normalize language code to ISO 639-1.
+    'heb' -> 'he', 'rus' -> 'ru', 'eng' -> 'en', 'he-IL' -> 'he', etc."""
+    code = code.lower().replace('_', '-')
+    # Already ISO 639-1?
+    if code in LANG_VOICE_MAP:
+        return code
+    # Try ffprobe code -> ISO 639-1
+    if code in FFPROBE_TO_ISO6391:
+        return FFPROBE_TO_ISO6391[code]
+    # Try voice/locale prefix: he-IL -> he
+    if '-' in code and code[:2] in LANG_VOICE_MAP:
+        return code[:2]
+    return code
+
 
 RED = "\033[0;31m"
 GREEN = "\033[0;32m"
@@ -200,6 +264,8 @@ def _build_parser() -> argparse.ArgumentParser:
               rusa -s subs.srt --speed 2.0 movie.mkv
               rusa --aac 192 --normalize movie.mkv
               rusa --from 10 --to 50 --audio-only movie.mkv
+               rusa --lang he movie.mkv
+               rusa --voice he-IL-HilaNeural --lang he movie.mkv
         """),
     )
     parser.add_argument("video", nargs="?", help="\u0412\u0438\u0434\u0435\u043e\u0444\u0430\u0439\u043b")
@@ -210,6 +276,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--voice", nargs="?", const="__LIST__", default=None,
                         help="\u0413\u043e\u043b\u043e\u0441 edge-tts. \u0411\u0435\u0437 \u0430\u0440\u0433\u0443\u043c\u0435\u043d\u0442\u0430 \u2014 \u0441\u043f\u0438\u0441\u043e\u043a \u0433\u043e\u043b\u043e\u0441\u043e\u0432. "
                              "\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e \u0430\u0432\u0442\u043e\u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u043f\u043e \u044f\u0437\u044b\u043a\u0443 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432")
+
+    parser.add_argument("--lang", default=None, metavar="LANG",
+                        help="\u042f\u0437\u044b\u043a \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 (\u043a\u043e\u0434 ISO 639-1: ru, en, he, de, fr, ...). "
+                             "\u041f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u044f\u0435\u0442\u0441\u044f \u0438\u0437 \u0433\u043e\u043b\u043e\u0441\u0430 --voice.")
 
     parser.add_argument("--speed", default=DEFAULT_SPEED,
                         help=f"\u0422\u0435\u043c\u043f \u0440\u0435\u0447\u0438 TTS (\u043f\u043e \u0443\u043c\u043e\u043b\u0447. {DEFAULT_SPEED})")
@@ -259,7 +329,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # \u0428\u0430\u0433 1: \u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b
 # ──────────────────────────────────────────────────────────────────────────
 
-def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str) -> str:
+def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target_lang: str | None = None) -> str:
     dest = os.path.join(tmpdir, "subtitles.srt")
     if srt_file:
         if not os.path.isfile(srt_file):
@@ -269,6 +339,12 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str) -> str
         ok(f"\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b: {sum(1 for _ in open(dest, encoding='utf-8'))} \u0441\u0442\u0440\u043e\u043a")
         return dest
 
+    # Determine target language codes to look for
+    if target_lang:
+        target_codes = lang_code_to_ffprobe_codes(target_lang)
+    else:
+        target_codes = ["rus", "ru", "russian"]
+
     info("\u0418\u0437\u0432\u043b\u0435\u0447\u0435\u043d\u0438\u0435 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 \u0438\u0437 \u0432\u0438\u0434\u0435\u043e...")
     result = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "s",
@@ -277,6 +353,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str) -> str
         capture_output=True, text=True, check=False
     )
     found = 0
+    available = []
     if result.returncode == 0 and result.stdout.strip():
         for line in result.stdout.strip().split("\n"):
             if not line.strip():
@@ -286,7 +363,8 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str) -> str
                 continue
             idx = parts[0].strip()
             lang = parts[1].strip().lower()
-            if lang in ("rus", "ru", "russian"):
+            available.append((idx, lang))
+            if lang in target_codes:
                 info(f"  \u041d\u0430\u0439\u0434\u0435\u043d \u043f\u043e\u0442\u043e\u043a \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432 #{idx} ({lang}), \u0438\u0437\u0432\u043b\u0435\u043a\u0430\u044e...")
                 rc = subprocess.run(
                     ["ffmpeg", "-y", "-loglevel", "error", "-i", video,
@@ -299,15 +377,28 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str) -> str
 
     if not found:
         base = os.path.splitext(video)[0]
-        for ext in [".rus.srt", ".ru.srt", ".russian.srt", ".srt"]:
-            cand = base + ext
-            if os.path.isfile(cand):
-                shutil.copy2(cand, dest)
-                found = 1
-                break
+        # Try external .srt files matching the target language
+        if target_lang:
+            for ext in [f".{target_lang}.srt", f".{target_lang[:2]}.srt", ".srt"]:
+                cand = base + ext
+                if os.path.isfile(cand):
+                    shutil.copy2(cand, dest)
+                    found = 1
+                    break
+        else:
+            for ext in [".rus.srt", ".ru.srt", ".russian.srt", ".srt"]:
+                cand = base + ext
+                if os.path.isfile(cand):
+                    shutil.copy2(cand, dest)
+                    found = 1
+                    break
 
     if not found:
-        die("\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt>")
+        avail_str = ", ".join(f"#{idx} ({lang})" for idx, lang in available) if available else "\u043d\u0435\u0442 \u043f\u043e\u0442\u043e\u043a\u043e\u0432"
+        if target_lang:
+            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b \u043d\u0430 \u044f\u0437\u044b\u043a\u0435 '{target_lang}'. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt> \u0438\u043b\u0438 --lang \u0434\u0440\u0443\u0433\u043e\u0439 \u044f\u0437\u044b\u043a.")
+        else:
+            die(f"\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0440\u0443\u0441\u0441\u043a\u0438\u0435 \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u044b. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043f\u043e\u0442\u043e\u043a\u0438: {avail_str}. \u0423\u043a\u0430\u0436\u0438\u0442\u0435 -s <file.srt>")
     ok(f"\u0421\u0443\u0431\u0442\u0438\u0442\u0440\u044b: {sum(1 for _ in open(dest, encoding='utf-8'))} \u0441\u0442\u0440\u043e\u043a")
     return dest
 
@@ -749,7 +840,8 @@ def _run_dynaudnorm(in_wav: str, out_wav: str) -> bool:
 def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
                     output: str, tmpdir: str,
                     audio_fmt: str, audio_bitrate: str,
-                    normalize: str | None, audio_only: bool) -> None:
+                    normalize: str | None, audio_only: bool,
+                    voiceover_lang: str = "rus") -> None:
     info("\u041c\u0438\u043a\u0441...")
     mixed = os.path.join(tmpdir, "mixed.wav")
     filter_expr = (
@@ -858,7 +950,7 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
                  "-c:s", "copy",
                  "-disposition:a:0", "none",
                  "-disposition:a:1", "default",
-                 "-metadata:s:a:1", "language=rus",
+                 "-metadata:s:a:1", f"language={voiceover_lang}",
                  "-metadata:s:a:1", "title=Voiceover",
                  output],
                 check=False, capture_output=True
@@ -878,7 +970,7 @@ def step_mix_output(video: str, voiceover_wav: str, orig_vol: str, tts_vol: str,
                  "-c:s", "copy",
                  "-disposition:a:0", "none",
                  "-disposition:a:1", "default",
-                 "-metadata:s:a:1", "language=rus",
+                 "-metadata:s:a:1", f"language={voiceover_lang}",
                  "-metadata:s:a:1", "title=Voiceover",
                  output],
                 check=False, capture_output=True
@@ -954,16 +1046,32 @@ def main() -> None:
             break
 
     # Голос: пока DEFAULT, уточним после получения субтитров
-    voice = args.voice if args.voice else DEFAULT_VOICE
-    normalize = args.normalize
+        normalize = args.normalize
+
+    # Determine target subtitle language and voice BEFORE info line
+    target_lang = None
+    if args.lang:
+        target_lang = normalize_lang_code(args.lang)
+        info(f"Язык субтитров: {target_lang}")
+    elif args.voice:
+        target_lang = voice_to_lang_code(args.voice)
+
+    # Voice: explicit --voice, or look up from --lang, or default
+    if args.voice:
+        voice = args.voice
+    elif target_lang and target_lang in LANG_VOICE_MAP:
+        voice = LANG_VOICE_MAP[target_lang]
+    else:
+        voice = DEFAULT_VOICE
+
     # Warn if voice is not in the live list
     rc_list = subprocess.run(
         ["python3", "-m", "edge_tts", "--list-voices"],
         check=False, capture_output=True, text=True
     )
     if rc_list.returncode == 0 and voice not in rc_list.stdout:
-        warn(f"\u0413\u043e\u043b\u043e\u0441 '{voice}' \u043e\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u0432 \u0441\u043f\u0438\u0441\u043a\u0435 edge-tts --list-voices")
-        warn("\u0412\u043e\u0437\u043c\u043e\u0436\u043d\u043e, \u043e\u043d \u0443\u0434\u0430\u043b\u0451\u043d Microsoft. \u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043c\u043e\u0436\u0435\u0442 \u043d\u0435 \u0440\u0430\u0431\u043e\u0442\u0430\u0442\u044c.")
+        warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
+        warn("Возможно, он удалён Microsoft. Генерация может не работать.")
 
     # Output file
     if args.output:
@@ -974,47 +1082,48 @@ def main() -> None:
         output = os.path.join(os.path.dirname(video), f"{base}_dubbed{ext}")
 
     # Info
-    sync_str = "\u0432\u043a\u043b" if args.sync else "\u0432\u044b\u043a\u043b"
+    sync_str = "вкл" if args.sync else "выкл"
     codec_name, codec_bit, _ = _get_codec(audio_fmt, audio_bitrate)
-    info(f"\u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f: {sync_str} | "
-         f"\u0413\u043e\u043b\u043e\u0441: {voice} | "
-         f"\u041a\u043e\u0434\u0435\u043a: {codec_name} {codec_bit} | "
-         f"\u0422\u0435\u043c\u043f: {args.speed}x | "
-         f"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b: {args.orig_vol} | TTS: {args.tts_vol}")
+    info(f"Синхронизация: {sync_str} | "
+         f"Голос: {voice} | "
+         f"Кодек: {codec_name} {codec_bit} | "
+         f"Темп: {args.speed}x | "
+         f"Оригинал: {args.orig_vol} | TTS: {args.tts_vol}")
     if normalize:
-        info(f"\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f: {normalize}")
+        info(f"Нормализация: {normalize}")
     if args.range_from or args.range_to:
-        info(f"\u0414\u0438\u0430\u043f\u0430\u0437\u043e\u043d \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432: {args.range_from or 1}\u2013{args.range_to or '...'}")
+        info(f"Диапазон субтитров: {args.range_from or 1}–{args.range_to or '...'}")
     if args.audio_only:
-        info("\u0420\u0435\u0436\u0438\u043c: \u0442\u043e\u043b\u044c\u043a\u043e \u0430\u0443\u0434\u0438\u043e")
+        info("Режим: только аудио")
 
     # Temp dir
     tmpdir = tempfile.mkdtemp(prefix="rusa_")
     try:
-        subs_path = step_extract_subtitles(video, args.srt, tmpdir)
+        subs_path = step_extract_subtitles(video, args.srt, tmpdir, target_lang)
 
-        # Уточняем голос после получения субтитров
-        if args.voice is None:
+        # Уточняем голос только если не было --voice и не было --lang
+        if args.voice is None and args.lang is None:
             detected = detect_language_from_srt(subs_path)
             if detected:
                 voice = detected
-                info(f"\u042f\u0437\u044b\u043a \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0451\u043d: {voice}")
+                info(f"Язык определён: {voice}")
             else:
                 if HAS_LANGDETECT:
-                    warn("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0438\u0442\u044c \u044f\u0437\u044b\u043a \u0441\u0443\u0431\u0442\u0438\u0442\u0440\u043e\u0432, \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e \u0433\u043e\u043b\u043e\u0441 \u043f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e")
+                    warn("Не удалось определить язык субтитров, использую голос по умолчанию")
                 else:
-                    warn("langdetect \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d (pip install langdetect), \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u044e \u0433\u043e\u043b\u043e\u0441 \u043f\u043e \u0443\u043c\u043e\u043b\u0447\u0430\u043d\u0438\u044e")
-
+                    warn("langdetect не установлен (pip install langdetect), использую голос по умолчанию")
         if args.sync:
             subs_path = step_sync_alass(video, subs_path, tmpdir)
         entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
         tts_results = step_generate_tts(entries, voice, args.threads, tmpdir)
         wav_results = step_convert_wav(tts_results, args.speed, tmpdir)
         voiceover_wav = step_assemble(entries, wav_results, tmpdir)
+        voiceover_lang = lang_code_to_ffprobe_codes(target_lang)[0] if target_lang else "rus"
         step_mix_output(video, voiceover_wav, args.orig_vol, args.tts_vol,
                         output, tmpdir,
                         audio_fmt, audio_bitrate,
-                        args.normalize, args.audio_only)
+                        args.normalize, args.audio_only,
+                        voiceover_lang)
     finally:
         if not args.keep_temp:
             shutil.rmtree(tmpdir, ignore_errors=True)
