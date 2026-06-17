@@ -167,6 +167,9 @@ rusa --tts-cmd 'text2wave -o {out} {in}' movie.mkv
 
 # gtts-cli (Google TTS)
 rusa --tts-cmd 'gtts-cli --lang ru -o {out} -f {in}' movie.mkv
+
+# Silero TTS (требуется /home/user/bin/tts_silero.py)
+rusa --tts-cmd '/home/user/bin/tts_silero.py {in} {out} {voice}' --voice baya movie.mkv
 ```
 
 **Плейсхолдеры:** `{in}` = файл с текстом, `{out}` = выходной аудио, `{voice}` = значение `--voice`.
