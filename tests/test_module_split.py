@@ -7,7 +7,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import rusa
 import rusa_audio
-import rusa_cache
 import rusa_cli
 import rusa_mux
 import rusa_shared
@@ -18,7 +17,7 @@ import rusa_tts
 def test_split_modules_import_cleanly():
     assert callable(rusa.main)
     assert callable(rusa_audio.step_assemble)
-    assert callable(rusa_cache.print_cache_stats)
+    assert callable(rusa_shared.print_cache_stats)
     assert callable(rusa_cli.build_parser)
     assert callable(rusa_mux.step_mix_output)
     assert callable(rusa_subtitle.step_parse_srt)

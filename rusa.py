@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""rusa — Russian Voiceover for Movies."""
+"""rusa — Russian Voiceover for Movies.
+
+Public API: all commonly-used names are re-exported from submodules.
+Tests and external code should access everything through ``rusa.*``.
+"""
 
 import os
 import shutil
@@ -12,16 +16,49 @@ import rusa_audio
 import rusa_mux
 import rusa_shared
 from rusa_audio import step_assemble, step_convert_wav
-from rusa_cache import (
-    clear_cache,
-    print_cache_stats,
-    print_timing_summary,
-    tts_cache_path as _tts_cache_path,
-    wav_cache_path as _wav_cache_path,
-)
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
-from rusa_shared import *
+from rusa_shared import (          # noqa: F401 — re-exported as public API
+    CODEC_MAP,
+    DEFAULT_ORIG_VOL,
+    DEFAULT_SPEED,
+    DEFAULT_SUBS_MODE,
+    DEFAULT_THREADS,
+    DEFAULT_TTS_VOL,
+    DEFAULT_VOICE,
+    EXIT_CODEC_ERROR,
+    EXIT_DEPENDENCY_ERROR,
+    EXIT_RUNTIME_ERROR,
+    EXIT_SUBTITLE_ERROR,
+    EXIT_USAGE_ERROR,
+    HAS_LANGDETECT,
+    HAS_TQDM,
+    LANG_VOICE_MAP,
+    WAV_BPF,
+    WAV_CHANNELS,
+    WAV_FRAMERATE,
+    WAV_HEADER_SIZE,
+    WAV_SAMPLEWIDTH,
+    _CACHE_DISABLED,
+    clear_cache,
+    copy_into_cache,
+    die,
+    err,
+    file_sha256,
+    info,
+    lang_code_to_ffprobe_codes,
+    normalize_lang_code,
+    ok,
+    print_cache_stats,
+    print_timing_summary,
+    tts_cache_dir,
+    tts_cache_path as _tts_cache_path,
+    voice_to_lang_code,
+    wav_cache_dir,
+    wav_cache_path as _wav_cache_path,
+    warn,
+    which,
+)
 from rusa_subtitle import detect_language_from_srt, step_extract_subtitles, step_parse_srt, step_sync_alass
 from rusa_tts import _split_text, step_generate_tts
 
@@ -39,25 +76,9 @@ def _build_parser():
     return _build_parser_impl()
 
 
-def _tts_cache_dir():
-    return rusa_shared.tts_cache_dir()
-
-
-def _copy_into_cache(src: str, cache_path: str | None) -> None:
-    return rusa_shared.copy_into_cache(src, cache_path)
-
-
-def _wav_cache_dir():
-    return rusa_shared.wav_cache_dir()
-
-
-def _file_sha256(path: str) -> str:
-    return rusa_shared.file_sha256(path)
-
-
 def main() -> None:
     args = _get_parser().parse_args(sys.argv[1:])
-    prev_cache_disabled = rusa_shared._CACHE_DISABLED
+    prev_cache_disabled = _CACHE_DISABLED
     try:
         if args.voice == "__LIST__":
             list_voices()
@@ -125,7 +146,11 @@ def main() -> None:
             output = os.path.join(os.path.dirname(video), f"{base}_dubbed{ext}")
 
         sync_str = "вкл" if args.sync else "выкл"
-        codec_name, codec_bit, _ext = _get_codec(audio_fmt, audio_bitrate)
+        codec_info = _get_codec(audio_fmt, audio_bitrate)
+        if codec_info is None:
+            codec_name, codec_bit = audio_fmt, f"{audio_bitrate}k"
+        else:
+            codec_name, codec_bit = codec_info[0], codec_info[1]
         info(
             f"Синхронизация: {sync_str} | Голос: {voice} | Кодек: {codec_name} {codec_bit} | "
             f"Темп: {args.speed}x | Оригинал: {args.orig_vol} | TTS: {args.tts_vol}"

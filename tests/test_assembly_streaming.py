@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
+from tests.conftest import make_sine_wav
 
 
 def test_assemble_uses_single_write_pass(monkeypatch, tmp_path):
@@ -15,10 +16,9 @@ def test_assemble_uses_single_write_pass(monkeypatch, tmp_path):
         {"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "First"},
         {"idx": 2, "start_ms": 4000, "end_ms": 5000, "text": "Second"},
     ]
-    from tests.test_assembly import _make_sine_wav
 
-    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 700)
-    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 800)
+    wav1 = make_sine_wav(str(tmp_path / "batch_0001.wav"), 700)
+    wav2 = make_sine_wav(str(tmp_path / "batch_0002.wav"), 800)
     wav_results = [(1, wav1, 700.0), (2, wav2, 800.0)]
     out_path = str(tmp_path / "voiceover.wav")
 

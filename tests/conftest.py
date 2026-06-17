@@ -1,7 +1,13 @@
 """pytest fixtures for rusa tests."""
-import os, sys, tempfile, struct, wave, json, subprocess
+import os
+import struct
+import subprocess
+import sys
+import textwrap
+import wave
 from functools import lru_cache
 from pathlib import Path
+
 import pytest
 
 # Add project to path
@@ -63,22 +69,13 @@ def fixtures_ready():
     return FIXTURES_DIR
 
 
-@pytest.fixture
-def tmp_wav():
-    """Create a temporary WAV with known duration."""
-    path = tempfile.mktemp(suffix=".wav")
-    yield path
-    if os.path.isfile(path):
-        os.unlink(path)
-
-
 def make_sine_wav(path: str, duration_ms: int = 1000,
                   freq: int = 440, framerate: int = 48000) -> str:
     """Create a WAV file with a sine tone. Returns path."""
+    import math
     nframes = int(duration_ms * framerate / 1000)
     bpf = 2 * 2  # 2 channels * 2 bytes
     data = b""
-    import math
     for frame in range(nframes):
         t = frame / framerate
         val = int(16000 * math.sin(2 * 3.14159 * freq * t))
@@ -168,6 +165,3 @@ def srt_path(tmp_path, srt_content_en):
     with open(path, "w", encoding="utf-8") as f:
         f.write(srt_content_en)
     return path
-
-
-import textwrap

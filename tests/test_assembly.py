@@ -1,32 +1,13 @@
 """Tests for voiceover assembly (step_assemble)."""
-import sys, os, struct, wave, math, tempfile
+import os
+import struct
+import sys
+import wave
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
-
-
-def _make_sine_wav(path: str, duration_ms: int = 1000,
-                   freq: int = 440, framerate: int = 48000) -> str:
-    """Create a WAV file with a sine tone. Returns path."""
-    nframes = int(duration_ms * framerate / 1000)
-    bpf = 2 * 2
-    data = b""
-    for frame in range(nframes):
-        t = frame / framerate
-        val = int(16000 * math.sin(2 * 3.14159 * freq * t))
-        data += struct.pack("<h", val)
-        data += struct.pack("<h", val)
-    with open(path, "wb") as f:
-        f.write(b"RIFF")
-        f.write(struct.pack("<I", 36 + len(data)))
-        f.write(b"WAVE")
-        f.write(b"fmt ")
-        f.write(struct.pack("<IHHIIHH", 16, 1, 2, framerate,
-                2 * 2 * framerate, 2 * 2, 2 * 8))
-        f.write(b"data")
-        f.write(struct.pack("<I", len(data)))
-        f.write(data)
-    return path
+from tests.conftest import make_sine_wav
 
 
 def test_assemble_basic(sample_entries, sample_wav_results, tmp_path):
@@ -93,8 +74,8 @@ def test_assemble_cascade_shifts_segments(tmp_path):
         {"idx": 1, "start_ms": 0, "end_ms": 5000, "text": "Long"},
         {"idx": 2, "start_ms": 1000, "end_ms": 3000, "text": "Short"},
     ]
-    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 3000, freq=300)
-    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 500, freq=500)
+    wav1 = make_sine_wav(str(tmp_path / "batch_0001.wav"), 3000, freq=300)
+    wav2 = make_sine_wav(str(tmp_path / "batch_0002.wav"), 500, freq=500)
     wav_results = [(1, wav1, 3000.0), (2, wav2, 500.0)]
 
     out = rusa.step_assemble(entries, wav_results, str(tmp_path))
@@ -141,8 +122,8 @@ def test_assemble_exact_time_when_no_overlap(tmp_path):
         {"idx": 2, "start_ms": 3000, "end_ms": 6000, "text": "Second"},
     ]
     # Seg1 is short — finishes before seg2 starts
-    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 2000, freq=300)
-    wav2 = _make_sine_wav(str(tmp_path / "batch_0002.wav"), 1000, freq=500)
+    wav1 = make_sine_wav(str(tmp_path / "batch_0001.wav"), 2000, freq=300)
+    wav2 = make_sine_wav(str(tmp_path / "batch_0002.wav"), 1000, freq=500)
     wav_results = [(1, wav1, 2000.0), (2, wav2, 1000.0)]
 
     out = rusa.step_assemble(entries, wav_results, str(tmp_path))
@@ -170,7 +151,7 @@ def test_assemble_with_zero_duration(tmp_path):
         {"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "First"},
         {"idx": 2, "start_ms": 3000, "end_ms": 4000, "text": "Second"},
     ]
-    wav1 = _make_sine_wav(str(tmp_path / "batch_0001.wav"), 500)
+    wav1 = make_sine_wav(str(tmp_path / "batch_0001.wav"), 500)
     wav_results = [
         (1, wav1, 500.0),
         (2, str(tmp_path / "missing.wav"), 0),
@@ -218,7 +199,7 @@ def test_assemble_large_number_of_segments(tmp_path):
                         "text": f"Line {i}"})
         dur_ms = 800 + random.randint(0, 400)
         wav_path = str(tmp_path / f"batch_{i:04d}.wav")
-        _make_sine_wav(wav_path, dur_ms, freq=200 + (i % 10) * 100)
+        make_sine_wav(wav_path, dur_ms, freq=200 + (i % 10) * 100)
         wav_results.append((i, wav_path, float(dur_ms)))
 
     out = rusa.step_assemble(entries, wav_results, str(tmp_path))

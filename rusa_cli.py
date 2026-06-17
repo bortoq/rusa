@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-stats", action="store_true", help="Показать статистику TTS/WAV кэша и выйти")
     parser.add_argument("--cache-clear", action="store_true", help="Очистить TTS/WAV кэш и выйти")
     parser.add_argument("--no-cache", action="store_true", help="Не читать и не писать TTS/WAV кэш в этом запуске")
+    parser.add_argument("--version", action="version", version="rusa 1.0.0", help="Показать версию и выйти")
 
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--aac", nargs="?", const="128", metavar="BITRATE", help="Кодек AAC (по умолч. 128k)")

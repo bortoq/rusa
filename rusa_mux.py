@@ -21,10 +21,11 @@ from rusa_shared import (
 )
 
 
-def _get_codec(codec_name: str, bitrate: str) -> tuple[str, str, str]:
+def _get_codec(codec_name: str, bitrate: str) -> tuple[str, str, str] | None:
+    """Return (ffmpeg_codec, bitrate_arg, extension) or None if unknown."""
     entry = CODEC_MAP.get(codec_name)
     if not entry:
-        return ("libopus", "64k", ".opus")
+        return None
     return (entry[0], f"{bitrate}k", entry[2])
 
 
@@ -267,7 +268,16 @@ def step_mix_output(
         else:
             warn("Нормализация не удалась, продолжаю без неё")
 
-    ffmpeg_codec, bitrate_arg, ext = _get_codec(audio_fmt, audio_bitrate)
+    codec_info = _get_codec(audio_fmt, audio_bitrate)
+    if codec_info is None:
+        known = ", ".join(sorted(CODEC_MAP))
+        die(
+            f"Неизвестный формат аудио: {audio_fmt}. "
+            f"Доступные форматы: {known}",
+            EXIT_CODEC_ERROR,
+        )
+    ffmpeg_codec, bitrate_arg, ext = codec_info
+
     if not _check_ffmpeg_codec(ffmpeg_codec):
         alt_suggestions = []
         for alt_name in CODEC_MAP:

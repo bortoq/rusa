@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from typing import TypedDict
 
 from rusa_shared import (
     EXIT_SUBTITLE_ERROR,
@@ -19,16 +20,46 @@ from rusa_shared import (
     warn,
 )
 
-Entry = dict
+
+class Entry(TypedDict):
+    idx: int
+    start_ms: int
+    end_ms: int
+    text: str
 
 
 def detect_language_from_srt(srt_path: str) -> str | None:
     name = os.path.basename(srt_path)
-    match = re.match(r".*\.([a-z]{2})\.srt$", name)
+    match = re.match(r".*\.([a-z]{2,7})\.srt$", name)
     if match:
         code = match.group(1).lower()
-        if code in LANG_VOICE_MAP:
-            return LANG_VOICE_MAP[code]
+        # Map 3+ letter codes → ISO 639-1
+        lang_map = {
+            "rus": "ru", "russian": "ru",
+            "eng": "en", "english": "en",
+            "heb": "he", "hebrew": "he",
+            "deu": "de", "ger": "de", "german": "de",
+            "fra": "fr", "fre": "fr", "french": "fr",
+            "spa": "es", "spanish": "es",
+            "ita": "it", "italian": "it",
+            "por": "pt", "portuguese": "pt",
+            "jpn": "ja", "japanese": "ja",
+            "kor": "ko", "korean": "ko",
+            "zho": "zh", "chi": "zh", "chinese": "zh",
+            "ara": "ar", "arabic": "ar",
+            "tur": "tr", "turkish": "tr",
+            "nld": "nl", "dut": "nl", "dutch": "nl",
+            "pol": "pl", "polish": "pl",
+            "swe": "sv", "swedish": "sv",
+            "dan": "da", "danish": "da",
+            "fin": "fi", "finnish": "fi",
+            "nor": "nb", "norsk": "nb",
+            "ces": "cs", "cze": "cs", "czech": "cs",
+            "hun": "hu", "hungarian": "hu",
+        }
+        iso = lang_map.get(code, code)
+        if iso in LANG_VOICE_MAP:
+            return LANG_VOICE_MAP[iso]
 
     if not HAS_LANGDETECT:
         return None
