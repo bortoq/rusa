@@ -265,3 +265,56 @@ class TestListVoices:
         captured = capsys.readouterr()
         ru_lines = [l for l in captured.out.split("\n") if "ru-" in l.lower()]
         assert len(ru_lines) >= 2
+
+
+# ── Cache eviction ───────────────────────────────────────────────────
+
+class TestCacheEviction:
+    def test_evict_oldest_removes_oldest_files(self, tmp_path):
+        """_evict_oldest should remove oldest files first when total exceeds max_size."""
+        # Create 3 files: 100 + 100 + 100 = 300 bytes
+        for i in range(3):
+            f = tmp_path / f"file{i}.mp3"
+            f.write_bytes(b"x" * 100)
+            os.utime(f, (0, 100 - i * 10))  # file0(100)=oldest, file1(90), file2(80)
+
+        # max_size=150 means we need to remove until <= 150
+        removed = rusa_shared._evict_oldest(str(tmp_path), max_size=150)
+        # After removing file2(100): 200 > 150, after removing file1(100): 100 <= 150
+        assert removed == 2
+        remaining = sorted(os.listdir(tmp_path))
+        assert remaining == ["file0.mp3"]  # file0 (mtime=100) is newest, survives
+
+    def test_evict_oldest_no_removal_when_under_limit(self, tmp_path):
+        """_evict_oldest should remove nothing when total <= max_size."""
+        (tmp_path / "a.mp3").write_bytes(b"x" * 50)
+        (tmp_path / "b.mp3").write_bytes(b"x" * 50)
+
+        removed = rusa_shared._evict_oldest(str(tmp_path), max_size=200)
+        assert removed == 0
+        assert len(os.listdir(tmp_path)) == 2
+
+    def test_evict_oldest_non_existent_dir(self, tmp_path):
+        """_evict_oldest should return 0 for non-existent directories."""
+        removed = rusa_shared._evict_oldest(str(tmp_path / "nonexistent"), max_size=100)
+        assert removed == 0
+
+    def test_cache_max_size_reads_env(self, monkeypatch):
+        """_cache_max_size should read RUSA_CACHE_MAX_SIZE from env, with 1 MiB floor."""
+        monkeypatch.setenv("RUSA_CACHE_MAX_SIZE", "2097152")  # 2 MiB
+        assert rusa_shared._cache_max_size() == 2097152
+
+    def test_cache_max_size_minimum_floor(self, monkeypatch):
+        """_cache_max_size should enforce a 1 MiB minimum."""
+        monkeypatch.setenv("RUSA_CACHE_MAX_SIZE", "100")  # below 1 MiB
+        assert rusa_shared._cache_max_size() == 1024 * 1024
+
+    def test_cache_max_size_default(self, monkeypatch):
+        """_cache_max_size should return DEFAULT_CACHE_MAX_SIZE when env is unset."""
+        monkeypatch.delenv("RUSA_CACHE_MAX_SIZE", raising=False)
+        assert rusa_shared._cache_max_size() == rusa_shared.DEFAULT_CACHE_MAX_SIZE
+
+    def test_cache_max_size_fallback_on_invalid_env(self, monkeypatch):
+        """_cache_max_size should return default when env is not a valid integer."""
+        monkeypatch.setenv("RUSA_CACHE_MAX_SIZE", "not_a_number")
+        assert rusa_shared._cache_max_size() == rusa_shared.DEFAULT_CACHE_MAX_SIZE

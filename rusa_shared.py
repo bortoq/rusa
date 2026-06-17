@@ -37,6 +37,62 @@ WAV_FILTER_VERSION = "1"
 DEFAULT_SUBS_MODE = "auto"
 _CACHE_DISABLED = False
 
+# Cache size limit (LRU eviction)
+DEFAULT_CACHE_MAX_SIZE = 2 * 1024 * 1024 * 1024  # 2 GiB
+
+
+def _cache_max_size() -> int:
+    """Return max cache size in bytes from RUSA_CACHE_MAX_SIZE env (default 2 GiB)."""
+    raw = os.environ.get("RUSA_CACHE_MAX_SIZE", "")
+    if raw:
+        try:
+            return max(1024 * 1024, int(raw))  # at least 1 MiB
+        except ValueError:
+            pass
+    return DEFAULT_CACHE_MAX_SIZE
+
+
+def _evict_oldest(cache_dir: str, max_size: int | None = None) -> int:
+    """Remove oldest files by mtime until total size <= max_size.
+
+    Returns number of files removed. Only examines files directly in *cache_dir*
+    (one level, no recursive walk).
+    """
+    if max_size is None:
+        max_size = _cache_max_size()
+    if not os.path.isdir(cache_dir):
+        return 0
+    entries: list[tuple[float, str, int]] = []  # (mtime, path, size)
+    total = 0
+    for name in os.listdir(cache_dir):
+        child = os.path.join(cache_dir, name)
+        try:
+            st = os.stat(child)
+        except OSError:
+            continue
+        if not os.path.isfile(child):
+            continue
+        entries.append((st.st_mtime, child, st.st_size))
+        total += st.st_size
+
+    if total <= max_size:
+        return 0
+
+    # Sort by mtime ascending (oldest first)
+    entries.sort(key=lambda e: e[0])
+    removed = 0
+    for _mtime, child, size in entries:
+        if total <= max_size:
+            break
+        try:
+            os.remove(child)
+            total -= size
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 EXIT_RUNTIME_ERROR = 1
 EXIT_USAGE_ERROR = 2
 EXIT_DEPENDENCY_ERROR = 3
@@ -246,6 +302,10 @@ def copy_into_cache(src: str, cache_path: str | None) -> None:
     tmp_cache = f"{cache_path}.tmp.{os.getpid()}.{time.time_ns()}"
     shutil.copy2(src, tmp_cache)
     os.replace(tmp_cache, cache_path)
+    # LRU eviction: keep cache under limit
+    cached_dir = os.path.dirname(cache_path) if cache_path else None
+    if cached_dir and os.path.isdir(cached_dir):
+        _evict_oldest(cached_dir)
 
 
 def wav_cache_dir() -> str | None:
