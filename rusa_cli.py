@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""CLI parser and voice-listing helpers for rusa."""
+
+import argparse
+import subprocess
+import sys
+import textwrap
+
+from rusa_shared import (
+    CYAN,
+    DEFAULT_ORIG_VOL,
+    DEFAULT_SPEED,
+    DEFAULT_SUBS_MODE,
+    DEFAULT_THREADS,
+    DEFAULT_TTS_VOL,
+    NC,
+    EXIT_DEPENDENCY_ERROR,
+    die,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="rusa",
+        description="Создать и добавить голосовой закадровый перевод к фильму",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent(
+            """\
+            Примеры:
+              rusa movie.mkv
+              rusa --voice ru-RU-DmitryNeural movie.mkv
+              rusa -s subs.srt --speed 2.0 movie.mkv
+              rusa --aac 192 --normalize movie.mkv
+              rusa --from 10 --to 50 --audio-only movie.mkv
+              rusa --lang he movie.mkv
+              rusa --voice he-IL-HilaNeural --lang he movie.mkv
+        """
+        ),
+    )
+    parser.add_argument("video", nargs="?", help="Видеофайл")
+    parser.add_argument("-o", "--output", help="Выходной файл")
+    parser.add_argument("-s", "--srt", help="Файл субтитров .srt")
+    parser.add_argument(
+        "--voice",
+        nargs="?",
+        const="__LIST__",
+        default=None,
+        help="Голос edge-tts. Без аргумента — список голосов. По умолчанию автоопределение по языку субтитров",
+    )
+    parser.add_argument(
+        "--lang",
+        default=None,
+        metavar="LANG",
+        help="Язык субтитров (код ISO 639-1: ru, en, he, de, fr, ...). По умолчанию определяется из голоса --voice.",
+    )
+    parser.add_argument("--speed", default=DEFAULT_SPEED, help=f"Темп речи TTS (по умолч. {DEFAULT_SPEED})")
+    parser.add_argument("--orig-vol", default=DEFAULT_ORIG_VOL, help=f"Громкость оригинала 0.0–1.0 (по умолч. {DEFAULT_ORIG_VOL})")
+    parser.add_argument("--tts-vol", default=DEFAULT_TTS_VOL, help=f"Громкость TTS 0.0–1.0 (по умолч. {DEFAULT_TTS_VOL})")
+    parser.add_argument("--sync", action="store_true", help="Синхронизировать субтитры через alass")
+    parser.add_argument("--keep-temp", action="store_true", help="Не удалять временные файлы")
+    parser.add_argument("--threads", type=int, default=DEFAULT_THREADS, help=f"Количество потоков TTS (по умолч. {DEFAULT_THREADS})")
+    parser.add_argument("--cache-stats", action="store_true", help="Показать статистику TTS/WAV кэша и выйти")
+    parser.add_argument("--cache-clear", action="store_true", help="Очистить TTS/WAV кэш и выйти")
+    parser.add_argument("--no-cache", action="store_true", help="Не читать и не писать TTS/WAV кэш в этом запуске")
+
+    fmt_group = parser.add_mutually_exclusive_group()
+    fmt_group.add_argument("--aac", nargs="?", const="128", metavar="BITRATE", help="Кодек AAC (по умолч. 128k)")
+    fmt_group.add_argument("--mp3", nargs="?", const="192", metavar="BITRATE", help="Кодек MP3 (по умолч. 192k)")
+    fmt_group.add_argument("--opus", nargs="?", const="64", metavar="BITRATE", help="Кодек Opus (по умолч. 64k)")
+    fmt_group.add_argument("--ac3", nargs="?", const="448", metavar="BITRATE", help="Кодек AC3 (по умолч. 448k)")
+
+    parser.add_argument("--from", type=int, default=None, metavar="N", dest="range_from", help="Начальный номер субтитра")
+    parser.add_argument("--to", type=int, default=None, metavar="N", dest="range_to", help="Конечный номер субтитра")
+    parser.add_argument("--audio-only", action="store_true", help="Только аудио (без видео)")
+    parser.add_argument(
+        "--subs-mode",
+        choices=["auto", "copy", "convert", "drop"],
+        default=DEFAULT_SUBS_MODE,
+        help="Режим субтитров в выходном видео: auto|copy|convert|drop (по умолч. auto)",
+    )
+    parser.add_argument(
+        "--normalize",
+        nargs="?",
+        const="fine",
+        choices=["fast", "fine"],
+        help="Нормализация громкости: fast (быстро) или fine (точно, по умолч.)",
+    )
+    return parser
+
+
+def list_voices() -> None:
+    print(f"{CYAN}Доступные голоса edge-tts:{NC}")
+    rc = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
+    if rc.returncode != 0:
+        die("edge-tts не отвечает", EXIT_DEPENDENCY_ERROR)
+    print(rc.stdout)
+    print("Фильтр по русским:")
+    for line in rc.stdout.split("\n"):
+        if "ru-" in line.lower():
+            print(f"  {line.strip()}")
+    sys.exit(0)

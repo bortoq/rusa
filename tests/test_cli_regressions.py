@@ -543,7 +543,7 @@ def test_step_mix_output_codec_error_lists_alternatives(monkeypatch, tmp_path, c
         return codec != "libopus"
 
     monkeypatch.setattr(rusa.subprocess, "run", fake_run)
-    monkeypatch.setattr(rusa, "_check_ffmpeg_codec", fake_check)
+    monkeypatch.setattr(rusa.rusa_mux, "_check_ffmpeg_codec", fake_check)
 
     with pytest.raises(SystemExit) as exc:
         rusa.step_mix_output(

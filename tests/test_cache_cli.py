@@ -125,7 +125,7 @@ def test_no_cache_disables_reads_and_writes(monkeypatch, tmp_path):
             return rusa.subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
-    monkeypatch.setattr(rusa, "_CACHE_DISABLED", True)
+    monkeypatch.setattr(rusa.rusa_shared, "_CACHE_DISABLED", True)
     monkeypatch.setattr(rusa.subprocess, "run", fake_run)
 
     tts_results = rusa.step_generate_tts([entry], voice, 1, str(tmp_path / "tts_run"))
