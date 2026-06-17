@@ -576,7 +576,7 @@ class CustomCmdBackend(TtsBackend):
         # Derive a display name from the first word of the command (for filenames etc.)
         if template and template.split():
             exe = template.split()[0]
-            base = exe.rsplit(".exe", 1)[0]
+            base = os.path.basename(exe).rsplit(".exe", 1)[0]
             for suffix in ("-test", "-cli", ".exe"):
                 if base.endswith(suffix):
                     base = base[: -len(suffix)]
