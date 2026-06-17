@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-__all__ = ['step_assemble', 'step_convert_wav', 'list_voices', '_check_ffmpeg_codec', '_get_codec', 'step_mix_output', 'CODEC_MAP', 'DEFAULT_ORIG_VOL', 'DEFAULT_SPEED', 'DEFAULT_SUBS_MODE', 'DEFAULT_THREADS', 'DEFAULT_TTS_VOL', 'DEFAULT_VOICE', 'RHVOICE_DEFAULT_VOICE', 'EXIT_CODEC_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_RUNTIME_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_USAGE_ERROR', 'HAS_LANGDETECT', 'HAS_TQDM', 'LANG_VOICE_MAP', 'WAV_BPF', 'WAV_CHANNELS', 'WAV_FRAMERATE', 'WAV_HEADER_SIZE', 'WAV_SAMPLEWIDTH', 'clear_cache', 'copy_into_cache', 'die', 'err', 'file_sha256', 'info', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'ok', 'print_cache_stats', 'print_timing_summary', 'tts_cache_dir', 'voice_to_lang_code', 'wav_cache_dir', 'warn', 'which', 'detect_language_from_srt', 'step_extract_subtitles', 'step_parse_srt', 'step_sync_alass', '_split_text', 'step_generate_tts', 'main']
+__all__ = ['step_assemble', 'step_convert_wav', 'list_voices', '_check_ffmpeg_codec', '_get_codec', 'step_mix_output', 'CODEC_MAP', 'DEFAULT_ORIG_VOL', 'DEFAULT_SPEED', 'DEFAULT_SUBS_MODE', 'DEFAULT_THREADS', 'DEFAULT_TTS_VOL', 'DEFAULT_VOICE', 'EXIT_CODEC_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_RUNTIME_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_USAGE_ERROR', 'HAS_LANGDETECT', 'HAS_TQDM', 'LANG_VOICE_MAP', 'WAV_BPF', 'WAV_CHANNELS', 'WAV_FRAMERATE', 'WAV_HEADER_SIZE', 'WAV_SAMPLEWIDTH', 'clear_cache', 'copy_into_cache', 'die', 'err', 'file_sha256', 'info', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'ok', 'print_cache_stats', 'print_timing_summary', 'tts_cache_dir', 'voice_to_lang_code', 'wav_cache_dir', 'warn', 'which', 'detect_language_from_srt', 'step_extract_subtitles', 'step_parse_srt', 'step_sync_alass', '_split_text', 'step_generate_tts', 'main']
 """rusa — Russian Voiceover for Movies.
 
 Public API: all commonly-used names are re-exported from submodules.
@@ -22,7 +22,7 @@ from rusa_audio import step_assemble, step_convert_wav
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
 from rusa_shared import _restore_terminal, _save_terminal  # noqa: F401 — terminal guard
-from rusa_shared import RHVOICE_AVAILABLE, RHVOICE_DEFAULT_VOICE, RHVOICE_VOICES, get_installed_rhvoice_voices, list_rhvoices  # noqa: F401 — rhvoice
+from rusa_shared import BACKEND_REGISTRY  # noqa: F401 — TTS backends
 from rusa_shared import (          # noqa: F401 — re-exported as public API
     CODEC_MAP,
     DEFAULT_ORIG_VOL,
@@ -110,10 +110,13 @@ def main() -> None:
         which("ffmpeg")
         which("ffprobe")
         which("python3")
-        if args.tts_backend != "rhvoice":
-            rc = subprocess.run(["python3", "-m", "edge_tts", "--help"], check=False, capture_output=True)
-            if rc.returncode != 0:
-                die("edge-tts не установлен (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
+
+        # Resolve TTS backend
+        backend_cls = BACKEND_REGISTRY.get(args.tts_backend)
+        if backend_cls is None:
+            die(f"Неизвестный TTS бэкенд: {args.tts_backend}", EXIT_USAGE_ERROR)
+        if not backend_cls.is_available():
+            die(f"TTS бэкенд '{args.tts_backend}' не установлен", EXIT_DEPENDENCY_ERROR)
 
         audio_fmt = "opus"
         audio_bitrate = "64"
@@ -128,45 +131,40 @@ def main() -> None:
         target_lang = None
         if args.lang:
             target_lang = normalize_lang_code(args.lang)
-            if target_lang not in LANG_VOICE_MAP and not args.voice:
-                die(
-                    f"Язык '{args.lang}' не поддерживается для авто-выбора голоса. Укажите --voice явно.",
-                    EXIT_USAGE_ERROR,
-                )
             info(f"Язык субтитров: {target_lang}")
         elif args.voice:
-            target_lang = voice_to_lang_code(args.voice)
+            target_lang = backend_cls.lang_from_voice(args.voice)
 
         if args.voice:
             voice = args.voice
         elif target_lang:
-            if args.tts_backend == "rhvoice":
-                installed = get_installed_rhvoice_voices()
-                rhv = installed.get(target_lang, RHVOICE_VOICES.get(target_lang, [RHVOICE_DEFAULT_VOICE]))
-                voice = rhv[0]
-            else:
-                voice = LANG_VOICE_MAP.get(target_lang, DEFAULT_VOICE)
+            default_voice = backend_cls.get_default_voice(target_lang)
+            if default_voice is None:
+                die(
+                    f"Язык '{target_lang}' не поддерживается бэкендом '{args.tts_backend}'. "
+                    f"Укажите --voice явно.",
+                    EXIT_USAGE_ERROR,
+                )
+            voice = default_voice
         else:
-            voice = RHVOICE_DEFAULT_VOICE if args.tts_backend == "rhvoice" else DEFAULT_VOICE
+            # Fallback: use backend's default for 'ru' if available
+            voice = backend_cls.get_default_voice("ru") or DEFAULT_VOICE
 
-        if args.tts_backend == "rhvoice":
-            # Validate against installed RHVoice voices
-            all_rhv = [v for vv in RHVOICE_VOICES.values() for v in vv]
-            if voice not in all_rhv:
-                warn(f"Голос '{voice}' не найден среди известных RHVoice голосов")
-                warn(f"Доступные: {', '.join(sorted(set(all_rhv)))}")
-        else:
-            rc_list = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
-            if rc_list.returncode == 0 and voice not in rc_list.stdout:
-                warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
-                warn("Возможно, он удалён Microsoft. Генерация может не работать.")
+        # Validate voice
+        warning = backend_cls.validate_voice(voice)
+        if warning:
+            warn(warning)
 
         if args.output:
             output = os.path.realpath(args.output)
         else:
             base = os.path.splitext(os.path.basename(video))[0]
             ext = CODEC_MAP[audio_fmt][2] if args.audio_only else ".mkv"
-            output = os.path.join(os.path.dirname(video), f"{base}_dubbed{ext}")
+            lang_suffix = target_lang or backend_cls.lang_from_voice(voice)
+            output = os.path.join(
+                os.path.dirname(video),
+                f"{base}_{args.tts_backend}_{lang_suffix}{ext}",
+            )
 
         sync_str = "вкл" if args.sync else "выкл"
         codec_info = _get_codec(audio_fmt, audio_bitrate)
@@ -197,16 +195,10 @@ def main() -> None:
             if args.voice is None and args.lang is None:
                 detected = detect_language_from_srt(subs_path)
                 if detected:
-                    if args.tts_backend == "rhvoice":
-                        # detected is an edge-tts voice name; extract lang, pick RHVoice voice
-                        lang = voice_to_lang_code(detected)
-                        installed = get_installed_rhvoice_voices()
-                        rhv = installed.get(lang, RHVOICE_VOICES.get(lang, [RHVOICE_DEFAULT_VOICE]))
-                        voice = rhv[0]
-                        info(f"Язык определён: {lang} → голос: {voice}")
-                    else:
-                        voice = detected
-                        info(f"Язык определён: {voice}")
+                    # detected is an edge-tts voice name; extract lang, find voice for this backend
+                    lang_code = voice_to_lang_code(detected)
+                    voice = backend_cls.get_default_voice(lang_code) or detected
+                    info(f"Язык определён: {lang_code} → голос: {voice}")
                 else:
                     if HAS_LANGDETECT:
                         warn("Не удалось определить язык субтитров, использую голос по умолчанию")

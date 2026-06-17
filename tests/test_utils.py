@@ -234,25 +234,26 @@ class TestListVoices:
                 stdout="ru-RU-SvetlanaNeural\nen-US-AriaNeural\n",
                 stderr="",
             )
-        monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+        monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
         monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
-        monkeypatch.setattr("rusa.RHVOICE_AVAILABLE", False)
+        # Disable RHVoice so test only checks edge-tts output
+        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
 
         rusa.list_voices()
         captured = capsys.readouterr()
-        assert "edge-tts:" in captured.out
+        assert "edge:" in captured.out
         assert "ru-RU-SvetlanaNeural" in captured.out
 
     def test_list_voices_edge_tts_fails(self, monkeypatch, capsys):
         """list_voices should show note when edge-tts fails."""
         def fake_run(cmd, **kw):
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
-        monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+        monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
         monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
-        monkeypatch.setattr("rusa.RHVOICE_AVAILABLE", False)
+        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
         rusa.list_voices()
         captured = capsys.readouterr()
-        assert "edge-tts" in captured.out
+        assert "edge" in captured.out
 
     def test_list_voices_shows_filters_ru(self, monkeypatch, capsys):
         """list_voices should filter output for Russian voices."""
@@ -262,8 +263,9 @@ class TestListVoices:
                 stdout="Name: ru-RU-SvetlanaNeural\nName: en-US-AriaNeural\nName: ru-RU-DmitryNeural\n",
                 stderr="",
             )
-        monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+        monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
         monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
+        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
 
         rusa.list_voices()
         captured = capsys.readouterr()

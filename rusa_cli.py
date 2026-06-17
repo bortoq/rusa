@@ -112,46 +112,33 @@ def build_parser() -> argparse.ArgumentParser:
 
 def list_voices(lang: str | None = None) -> None:
     """Print available voices from all installed TTS backends."""
-    from rusa_shared import RHVOICE_AVAILABLE, normalize_lang_code
+    from rusa_shared import BACKEND_REGISTRY, normalize_lang_code
 
     # Normalize lang alias → ISO 639-1
     if lang:
         lang = normalize_lang_code(lang)
 
-    # edge-tts voices
-    print(f"{CYAN}edge-tts:{NC}")
-    rc = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
-    if rc.returncode == 0:
-        for line in rc.stdout.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if lang and f"-{lang}-" not in line.split(":")[-1].strip():
-                continue
-            print(f"  {line}")
-    else:
-        print("  (edge-tts не доступен)")
-
-    # RHVoice voices
-    if RHVOICE_AVAILABLE:
-        print(f"{CYAN}RHVoice:{NC}")
-        for voice_name, voice_lang in _list_rhvoice_voices():
-            if lang and voice_lang != lang:
-                continue
-            print(f"  {voice_name:<30s} [{voice_lang}]")
-    else:
-        print(f"{CYAN}RHVoice:{NC}")
-        print("  (не установлен, apt install rhvoice)")
+    for backend_name in ("edge", "rhvoice"):
+        backend_cls = BACKEND_REGISTRY.get(backend_name)
+        if backend_cls is None:
+            continue
+        print(f"{CYAN}{backend_name}:{NC}")
+        if backend_cls.is_available():
+            voices = backend_cls.list_voices()
+            if lang:
+                voices = [(v, l) for v, l in voices if l == lang]
+            if backend_name == "edge":
+                # edge-tts returns line strings, not tuples — use the raw format
+                for line_str, _ in voices:
+                    print(f"  {line_str}")
+            else:
+                for voice_name, voice_lang in voices:
+                    print(f"  {voice_name:<30s} [{voice_lang}]")
+        else:
+            print(f"  (не установлен — pip install {backend_name}-tts"
+                  f" или apt install {backend_name})")
 
     sys.exit(0)
 
 
-def _list_rhvoice_voices() -> list[tuple[str, str]]:
-    """Return [(voice_name, lang_code)] from actually installed RHVoice voices."""
-    from rusa_shared import get_installed_rhvoice_voices
-    installed = get_installed_rhvoice_voices()
-    result: list[tuple[str, str]] = []
-    for lang_code, voices in installed.items():
-        for v in voices:
-            result.append((v, lang_code))
-    return sorted(result, key=lambda x: x[0])
+

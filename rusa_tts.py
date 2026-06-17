@@ -10,6 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rusa_shared import (
+    BACKEND_REGISTRY,
     HAS_TQDM,
     MAX_TTS_CHARS,
     copy_into_cache,
@@ -44,47 +45,10 @@ def _split_text(text: str, max_chars: int = MAX_TTS_CHARS) -> list[str]:
 
 def _tts_generate(text: str, voice: str, out: str, backend: str) -> int:
     """Generate TTS audio using the specified backend. Returns 0 on success."""
-    if backend == "edge":
-        rc = subprocess.run(
-            ["edge-tts", "--voice", voice, "--text", text, "--write-media", out],
-            capture_output=True,
-            timeout=180,
-            check=False,
-        ).returncode
-        return rc
-    elif backend == "rhvoice":
-        try:
-            # Write text to temp file for reliable RHVoice input
-            rhvoice_in = out + ".rhvoice_in.txt"
-            with open(rhvoice_in, "w", encoding="utf-8") as fh:
-                fh.write(text)
-            proc = subprocess.run(
-                ["RHVoice-test", "-p", voice, "-i", rhvoice_in, "-o", "-"],
-                capture_output=True,
-                timeout=180,
-            )
-            try:
-                os.remove(rhvoice_in)
-            except OSError:
-                pass
-            if proc.returncode != 0 or not proc.stdout:
-                return proc.returncode or 1
-            # Pipe RHVoice WAV output through ffmpeg to produce MP3
-            rc = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error", "-f", "wav", "-i", "-",
-                 "-c", "libmp3lame", out],
-                check=False,
-                input=proc.stdout,
-                capture_output=True,
-                timeout=60,
-            )
-            return rc.returncode
-        except subprocess.TimeoutExpired:
-            return 1
-        except Exception:
-            return 1
-    else:
-        return 1
+    backend_cls = BACKEND_REGISTRY.get(backend)
+    if backend_cls is None:
+        die(f"Неизвестный TTS бэкенд: {backend}")
+    return backend_cls.generate(text, voice, out)
 
 
 def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str, backend: str = "edge") -> list[tuple[int, str]]:

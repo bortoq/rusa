@@ -18,6 +18,8 @@
 - [x] RHVoice backend (`--tts-backend rhvoice`)
 - [x] Unified `--voice` (показывает голоса edge-tts + RHVoice)
 - [x] Фильтрация списка голосов по `--lang`
+- [x] TTS Backend Abstraction — `BACKEND_REGISTRY`, классы `EdgeTtsBackend`/`RhvoiceBackend`, добавление нового бэкенда без правки `rusa.py`
+- [x] `_{backend}_{lang}` вместо `_dubbed` в имени выходного файла
 
 ---
 
@@ -313,6 +315,22 @@ build/
 ---
 
 ### ✅ 18. RHVoice backend — локальный TTS
+
+- `--tts-backend rhvoice` — RHVoice через subprocess
+- Унифицированный `--voice` показывает голоса всех установленных бэкэндов
+- Фильтрация по `--lang` для показа голосов
+- Кэш разделён по бэкэнду
+- 122 теста, все проходят
+
+---
+
+### ✅ 19. TTS Backend Abstraction + суффикс файла
+
+- Введён базовый класс `TtsBackend` с методами `is_available()`, `list_voices()`, `get_default_voice()`, `lang_from_voice()`, `validate_voice()`, `generate()`
+- `BACKEND_REGISTRY` — регистрация бэкендов по имени
+- `EdgeTtsBackend` и `RhvoiceBackend` — конкретные реализации
+- `rusa.py` не содержит `if backend == "rhvoice"` — всё через registry
+- Суффикс выходного файла: `_{backend}_{lang}` (например, `_edge_ru`)
 
 - `--tts-backend rhvoice` — RHVoice через subprocess
 - Унифицированный `--voice` показывает голоса всех установленных бэкэндов
