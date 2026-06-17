@@ -473,6 +473,41 @@ def _probe_rhvoice() -> None:
     RHVOICE_AVAILABLE = shutil.which("RHVoice-test") is not None
 
 
+def get_installed_rhvoice_voices() -> dict[str, list[str]]:
+    """Return dict[lang_code, [voice_names]] of actually installed RHVoice voices by probing disk."""
+    search_dirs = [
+        "/usr/share/RHVoice/voices",
+        "/usr/local/share/RHVoice/voices",
+        "/usr/lib/RHVoice/voices",
+        "/usr/local/lib/RHVoice/voices",
+    ]
+    installed_voices: list[str] = []
+    for d in search_dirs:
+        if os.path.isdir(d):
+            for fname in os.listdir(d):
+                fpath = os.path.join(d, fname)
+                if os.path.isfile(fpath):
+                    # Voice file without extension
+                    name, _ = os.path.splitext(fname)
+                    installed_voices.append(name)
+    installed_voices = sorted(set(installed_voices))
+
+    # Build reverse map: voice -> lang from RHVOICE_VOICES
+    voice_to_lang: dict[str, str] = {}
+    for lang, voices in RHVOICE_VOICES.items():
+        for v in voices:
+            voice_to_lang[v] = lang
+
+    result: dict[str, list[str]] = {}
+    for v in installed_voices:
+        lang = voice_to_lang.get(v, "unknown")
+        result.setdefault(lang, []).append(v)
+    # If nothing found on disk, fall back to the hardcoded list
+    if not result and RHVOICE_VOICES:
+        result = dict(RHVOICE_VOICES)
+    return result
+
+
 def list_rhvoices() -> None:
     """Print installed RHVoice voices by probing the data directory."""
     # Fallback: try to enumerate voice files in standard locations

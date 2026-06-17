@@ -22,7 +22,7 @@ from rusa_audio import step_assemble, step_convert_wav
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
 from rusa_shared import _restore_terminal, _save_terminal  # noqa: F401 — terminal guard
-from rusa_shared import RHVOICE_AVAILABLE, RHVOICE_DEFAULT_VOICE, RHVOICE_VOICES, list_rhvoices  # noqa: F401 — rhvoice
+from rusa_shared import RHVOICE_AVAILABLE, RHVOICE_DEFAULT_VOICE, RHVOICE_VOICES, get_installed_rhvoice_voices, list_rhvoices  # noqa: F401 — rhvoice
 from rusa_shared import (          # noqa: F401 — re-exported as public API
     CODEC_MAP,
     DEFAULT_ORIG_VOL,
@@ -141,7 +141,8 @@ def main() -> None:
             voice = args.voice
         elif target_lang:
             if args.tts_backend == "rhvoice":
-                rhv = RHVOICE_VOICES.get(target_lang, [RHVOICE_DEFAULT_VOICE])
+                installed = get_installed_rhvoice_voices()
+                rhv = installed.get(target_lang, RHVOICE_VOICES.get(target_lang, [RHVOICE_DEFAULT_VOICE]))
                 voice = rhv[0]
             else:
                 voice = LANG_VOICE_MAP.get(target_lang, DEFAULT_VOICE)
@@ -196,8 +197,16 @@ def main() -> None:
             if args.voice is None and args.lang is None:
                 detected = detect_language_from_srt(subs_path)
                 if detected:
-                    voice = detected
-                    info(f"Язык определён: {voice}")
+                    if args.tts_backend == "rhvoice":
+                        # detected is an edge-tts voice name; extract lang, pick RHVoice voice
+                        lang = voice_to_lang_code(detected)
+                        installed = get_installed_rhvoice_voices()
+                        rhv = installed.get(lang, RHVOICE_VOICES.get(lang, [RHVOICE_DEFAULT_VOICE]))
+                        voice = rhv[0]
+                        info(f"Язык определён: {lang} → голос: {voice}")
+                    else:
+                        voice = detected
+                        info(f"Язык определён: {voice}")
                 else:
                     if HAS_LANGDETECT:
                         warn("Не удалось определить язык субтитров, использую голос по умолчанию")

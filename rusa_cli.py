@@ -147,11 +147,11 @@ def list_voices(lang: str | None = None) -> None:
 
 
 def _list_rhvoice_voices() -> list[tuple[str, str]]:
-    """Return [(voice_name, lang_code)] from RHVoice installation."""
-    from rusa_shared import RHVOICE_VOICES
-    # Build reverse map: voice -> lang
+    """Return [(voice_name, lang_code)] from actually installed RHVoice voices."""
+    from rusa_shared import get_installed_rhvoice_voices
+    installed = get_installed_rhvoice_voices()
     result: list[tuple[str, str]] = []
-    for lang_code, voices in RHVOICE_VOICES.items():
+    for lang_code, voices in installed.items():
         for v in voices:
             result.append((v, lang_code))
     return sorted(result, key=lambda x: x[0])

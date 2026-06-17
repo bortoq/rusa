@@ -54,12 +54,19 @@ def _tts_generate(text: str, voice: str, out: str, backend: str) -> int:
         return rc
     elif backend == "rhvoice":
         try:
+            # Write text to temp file for reliable RHVoice input
+            rhvoice_in = out + ".rhvoice_in.txt"
+            with open(rhvoice_in, "w", encoding="utf-8") as fh:
+                fh.write(text)
             proc = subprocess.run(
-                ["RHVoice-test", "-p", voice, "-o", "-"],
-                input=text.encode("utf-8"),
+                ["RHVoice-test", "-p", voice, "-i", rhvoice_in, "-o", "-"],
                 capture_output=True,
                 timeout=180,
             )
+            try:
+                os.remove(rhvoice_in)
+            except OSError:
+                pass
             if proc.returncode != 0 or not proc.stdout:
                 return proc.returncode or 1
             # Pipe RHVoice WAV output through ffmpeg to produce MP3
