@@ -88,6 +88,7 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--to N`                     | Last subtitle index                   | all                                |
 | `--audio-only`               | Audio output only (no video)          | off                                |
 | `--tts-backend {edge,rhvoice}`      | TTS backend: edge (cloud) or rhvoice (local) | `edge`                |
+| `--tts-cmd TEMPLATE` | Arbitrary TTS command (`{in}` `{out}` `{voice}`) | —                                |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
 
@@ -138,6 +139,33 @@ Current Russian Microsoft Edge TTS voices:
 **80+ languages** are supported — from English and German to Japanese and Hebrew. Full list: `rusa --voice`.
 
 Language is auto-detected: subtitle filename pattern (`.ru.srt`, `.en.srt`, …) or content analysis via `langdetect`.
+
+### Custom TTS engine (--tts-cmd)
+
+Have a TTS engine not supported by rusa out of the box? Use `--tts-cmd` to invoke any command:
+
+```bash
+# espeak-ng
+rusa --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}' --voice ru movie.mkv
+
+# RHVoice
+rusa --tts-cmd 'RHVoice-test -p {voice} -i {in} -o {out}' --voice elena movie.mkv
+
+# festival
+rusa --tts-cmd 'text2wave -o {out} {in}' movie.mkv
+
+# gtts-cli (Google TTS)
+rusa --tts-cmd 'gtts-cli --lang ru -o {out} -f {in}' movie.mkv
+
+# Silero TTS (requires /home/user/bin/tts_silero.py)
+rusa --tts-cmd '/home/user/bin/tts_silero.py {in} {out} {voice}' --voice baya movie.mkv
+```
+
+**Placeholders:** `{in}` = text file, `{out}` = output audio file, `{voice}` = `--voice` value.
+
+**Note:** The command must be in PATH or an absolute path.
+
+---
 
 ## How It Works
 
