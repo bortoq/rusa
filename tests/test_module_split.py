@@ -23,6 +23,7 @@ def test_split_modules_import_cleanly():
     assert callable(rusa_subtitle.step_parse_srt)
     assert callable(rusa_tts.step_generate_tts)
     assert rusa.DEFAULT_VOICE == rusa_shared.DEFAULT_VOICE
+    assert rusa.RHVOICE_DEFAULT_VOICE == rusa_shared.RHVOICE_DEFAULT_VOICE
 
 
 def test_thin_entrypoint_reexports_split_callables():

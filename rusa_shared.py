@@ -462,6 +462,8 @@ RHVOICE_VOICES: dict[str, list[str]] = {
     "fr": ["sylvia"],
 }
 
+RHVOICE_DEFAULT_VOICE: str = "elena"
+
 RHVOICE_AVAILABLE: bool = False
 
 
