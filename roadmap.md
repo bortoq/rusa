@@ -313,13 +313,12 @@ build/
 
 ---
 
-### ✅ 18. CustomCmdBackend + удаление RHVoice
+### ✅ 18. CustomCmdBackend + удаление RHVoice + удаление --tts-backend
 
 - `--tts-cmd` — произвольная TTS-команда с плейсхолдерами `{in}` `{out}` `{voice}`
 - `CustomCmdBackend` — класс для пользовательских TTS-движков
 - RHVoice удалён из встроенных бэкендов (доступен через `--tts-cmd`)
-- `--tts-backend` без аргумента показывает установленные бэкенды
-- `rusa --tts-backend wat` → понятная ошибка со списком допустимых
+- `--tts-backend` удалён (единственный встроенный бэкенд — edge)
 
 ---
 

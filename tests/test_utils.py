@@ -242,7 +242,7 @@ class TestListVoices:
 
         rusa.list_voices()
         captured = capsys.readouterr()
-        assert "edge:" in captured.out
+        assert "edge-tts:" in captured.out
         assert "ru-RU-SvetlanaNeural" in captured.out
 
     def test_list_voices_edge_tts_fails(self, monkeypatch, capsys):
@@ -254,7 +254,7 @@ class TestListVoices:
 
         rusa.list_voices()
         captured = capsys.readouterr()
-        assert "edge" in captured.out
+        assert "edge-tts" in captured.out
 
     def test_list_voices_shows_filters_ru(self, monkeypatch, capsys):
         """list_voices should filter output for Russian voices."""

@@ -92,15 +92,6 @@ def main() -> None:
     try:
         if args.voice == "__LIST__":
             list_voices(args.lang)
-        if args.tts_backend == "__LIST__":
-            print("TTS бэкенды, поддерживаемые rusa:")
-            for name, cls in sorted(rusa_shared.BACKEND_REGISTRY.items()):
-                status = "✓ установлен" if cls.is_available() else "✗ не установлен"
-                print(f"  {name:<10s} {status}")
-            print()
-            print("Для произвольного TTS-движка используйте --tts-cmd:")
-            print("  rusa --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}' ...")
-            sys.exit(0)
         if args.cache_stats:
             print_cache_stats()
         if args.cache_clear:
@@ -120,24 +111,14 @@ def main() -> None:
         which("ffprobe")
         which("python3")
 
-        # If --tts-cmd given, configure custom backend and switch to it
+        # Resolve TTS backend
         if args.tts_cmd:
             rusa_shared.CustomCmdBackend.set_template(args.tts_cmd)
-            args.tts_backend = "custom"
-
-        # Resolve TTS backend
-        valid_backends = ("edge", "custom")
-        if args.tts_backend not in valid_backends:
-            die(
-                f"Неизвестный TTS бэкенд: '{args.tts_backend}'. "
-                f"Допустимые: {', '.join(valid_backends)}",
-                EXIT_USAGE_ERROR,
-            )
-        backend_cls = rusa_shared.BACKEND_REGISTRY.get(args.tts_backend)
-        if backend_cls is None:
-            die(f"TTS бэкенд '{args.tts_backend}' не зарегистрирован", EXIT_USAGE_ERROR)
-        if not backend_cls.is_available():
-            die(f"TTS бэкенд '{args.tts_backend}' не установлен", EXIT_DEPENDENCY_ERROR)
+            backend_cls = rusa_shared.CustomCmdBackend
+        else:
+            backend_cls = rusa_shared.EdgeTtsBackend
+            if not backend_cls.is_available():
+                die("edge-tts не установлен (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
 
         audio_fmt = "opus"
         audio_bitrate = "64"
@@ -162,7 +143,7 @@ def main() -> None:
             default_voice = backend_cls.get_default_voice(target_lang)
             if default_voice is None:
                 die(
-                    f"Язык '{target_lang}' не поддерживается бэкендом '{args.tts_backend}'. "
+                    f"Язык '{target_lang}' не поддерживается бэкендом '{backend_cls.name}'. "
                     f"Укажите --voice явно.",
                     EXIT_USAGE_ERROR,
                 )
@@ -184,7 +165,7 @@ def main() -> None:
             lang_suffix = target_lang or backend_cls.lang_from_voice(voice)
             output = os.path.join(
                 os.path.dirname(video),
-                f"{base}_{args.tts_backend}_{lang_suffix}{ext}",
+                f"{base}_{backend_cls.name}_{lang_suffix}{ext}",
             )
 
         sync_str = "вкл" if args.sync else "выкл"
@@ -238,7 +219,7 @@ def main() -> None:
             timings.append(("subtitles", time.perf_counter() - started))
 
             started = time.perf_counter()
-            tts_results = step_generate_tts(entries, voice, args.threads, tmpdir, args.tts_backend)
+            tts_results = step_generate_tts(entries, voice, args.threads, tmpdir, backend_cls.name)
             timings.append(("tts", time.perf_counter() - started))
 
             started = time.perf_counter()
