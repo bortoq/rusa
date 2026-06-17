@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Shared constants, optional deps, utilities, and cache helpers for rusa."""
-__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary']
+__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "_save_terminal", "_restore_terminal"]
 
 import hashlib
 import os
@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import sys
 import time
+import atexit
+import signal
+import termios
 
 HAS_TQDM = False
 HAS_LANGDETECT = False
@@ -405,3 +408,47 @@ def print_timing_summary(stage_durations: list[tuple[str, float]]) -> None:
     print("Timing:")
     for name, seconds in stage_durations:
         print(f"  {name}: {seconds:.1f}s")
+
+### Terminal state guard ############################################
+_TERM_SAVED = False
+_TERM_FD = -1
+_TERM_ATTRS = None
+
+
+def _save_terminal() -> None:
+    """Save current terminal attributes for restoration on exit."""
+    global _TERM_SAVED, _TERM_FD, _TERM_ATTRS
+    if _TERM_SAVED:
+        return
+    try:
+        fd = sys.stdin.fileno()
+        if os.isatty(fd):
+            _TERM_FD = fd
+            _TERM_ATTRS = termios.tcgetattr(fd)
+            _TERM_SAVED = True
+    except (termios.error, OSError, AttributeError):
+        pass
+
+
+def _restore_terminal() -> None:
+    """Restore terminal attributes to saved state."""
+    global _TERM_SAVED, _TERM_FD, _TERM_ATTRS
+    if not _TERM_SAVED or _TERM_FD < 0 or _TERM_ATTRS is None:
+        return
+    try:
+        termios.tcsetattr(_TERM_FD, termios.TCSANOW, _TERM_ATTRS)
+    except (termios.error, OSError):
+        pass
+    finally:
+        _TERM_SAVED = False
+        _TERM_FD = -1
+        _TERM_ATTRS = None
+
+
+def _term_handler(signum: int, frame: object) -> None:
+    """Signal handler: restore terminal and exit cleanly."""
+    _restore_terminal()
+    sys.exit(128 + signum)
+
+
+### End terminal guard ##############################################

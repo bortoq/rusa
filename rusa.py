@@ -10,6 +10,8 @@ import os
 import shutil
 import subprocess
 import sys
+import atexit
+import signal
 import tempfile
 import time
 
@@ -19,6 +21,7 @@ import rusa_shared
 from rusa_audio import step_assemble, step_convert_wav
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
+from rusa_shared import _restore_terminal, _save_terminal  # noqa: F401 — terminal guard
 from rusa_shared import (          # noqa: F401 — re-exported as public API
     CODEC_MAP,
     DEFAULT_ORIG_VOL,
@@ -80,6 +83,10 @@ def _build_parser():
 def main() -> None:
     args = _get_parser().parse_args(sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
+    _save_terminal()
+    atexit.register(_restore_terminal)
+    signal.signal(signal.SIGINT, rusa_shared._term_handler)
+    signal.signal(signal.SIGTERM, rusa_shared._term_handler)
     try:
         if args.voice == "__LIST__":
             list_voices()
