@@ -20,5 +20,10 @@ dependencies = [
 [project.scripts]
 rusa = "rusa:main"
 
+[project.urls]
+Homepage = "https://github.com/bortoq/rusa"
+Source = "https://github.com/bortoq/rusa"
+BugTracker = "https://github.com/bortoq/rusa/issues"
+
 [tool.setuptools]
-py-modules = ["rusa"]
+py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
