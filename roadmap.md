@@ -14,13 +14,16 @@
 - [x] Assembly streaming (один write pass, без переоткрытия файла, WAV header пишется в конце)
 - [x] Error UX: стабильные exit-коды (`EXIT_RUNTIME_ERROR`, `EXIT_USAGE_ERROR`, `EXIT_DEPENDENCY_ERROR`, `EXIT_SUBTITLE_ERROR`, `EXIT_CODEC_ERROR`)
 - [x] Тэсты: offline/live маркеры (`slow`, `live_tts`)
-- [x] 81 тест, все проходят
+- [x] 81 тест → 122 теста, все проходят
+- [x] RHVoice backend (`--tts-backend rhvoice`)
+- [x] Unified `--voice` (показывает голоса edge-tts + RHVoice)
+- [x] Фильтрация списка голосов по `--lang`
 
 ---
 
 ## Priorities
 
-### 🔴 1. Исправить латентный crash при отсутствии `langdetect`
+### ✅ 1. Исправить латентный crash при отсутствии `langdetect`
 
 - Priority: **critical**
 - Cost: low
@@ -36,7 +39,7 @@
 
 ---
 
-### 🟡 2. Убрать мёртвый код и неиспользуемые импорты
+### ✅ 2. Убрать мёртвый код и неиспользуемые импорты
 
 - Priority: **high**
 - Cost: low
@@ -59,7 +62,7 @@
 
 ---
 
-### 🟡 3. Убрать пустой фасад `rusa_cache.py`
+### ✅ 3. Убрать пустой фасад `rusa_cache.py`
 
 - Priority: **high**
 - Cost: low
@@ -74,7 +77,7 @@
 
 ---
 
-### 🟡 4. Заменить `from rusa_shared import *` на явные импорты
+### ✅ 4. Заменить `from rusa_shared import *` на явные импорты
 
 - Priority: **high**
 - Cost: low
@@ -88,7 +91,7 @@ Wildcard import вытягивает всё, включая `_CACHE_DISABLED`, `
 
 ---
 
-### 🟡 5. Заменить `__import__()` на обычные import
+### ✅ 5. Заменить `__import__()` на обычные import
 
 - Priority: **high**
 - Cost: low
@@ -102,7 +105,7 @@ Wildcard import вытягивает всё, включая `_CACHE_DISABLED`, `
 
 ---
 
-### 🟡 6. Закэшировать `_check_ffmpeg_codec()`
+### ✅ 6. Закэшировать `_check_ffmpeg_codec()`
 
 - Priority: **high**
 - Cost: low
@@ -116,7 +119,7 @@ Wildcard import вытягивает всё, включая `_CACHE_DISABLED`, `
 
 ---
 
-### 🟠 7. Добавить поддержку `.rus.srt` и `.russian.srt` в детекцию языка
+### ✅ 7. Добавить поддержку `.rus.srt` и `.russian.srt` в детекцию языка
 
 - Priority: **medium**
 - Cost: low
@@ -134,7 +137,7 @@ match = re.match(r".*\.([a-z]{2})\.srt$", name)
 
 ---
 
-### 🟠 8. Добавить `--version` в CLI
+### ✅ 8. Добавить `--version` в CLI
 
 - Priority: **medium**
 - Cost: low
@@ -148,7 +151,7 @@ match = re.match(r".*\.([a-z]{2})\.srt$", name)
 
 ---
 
-### 🟠 9. Исправить legacy build-backend в `pyproject.toml`
+### ✅ 9. Исправить legacy build-backend в `pyproject.toml`
 
 - Priority: **medium**
 - Cost: low
@@ -165,7 +168,7 @@ build-backend = "setuptools.build_meta"
 
 ---
 
-### 🟠 10. TypedDict для Entry вместо `dict`
+### ✅ 10. TypedDict для Entry вместо `dict`
 
 - Priority: **medium**
 - Cost: low
@@ -190,7 +193,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟠 11. Устранить дублирование `make_sine_wav`
+### ✅ 11. Устранить дублирование `make_sine_wav`
 
 - Priority: **medium**
 - Cost: low
@@ -204,7 +207,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟠 12. Добавить `__all__` во все модули
+### ✅ 12. Добавить `__all__` во все модули
 
 - Priority: **medium**
 - Cost: low
@@ -218,7 +221,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟢 13. Добавить LRU-eviction для кэша
+### ✅ 13. Добавить LRU-eviction для кэша
 
 - Priority: **low**
 - Cost: medium
@@ -235,7 +238,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟢 14. Добавить unit-тесты на `_run_loudnorm`, `_run_dynaudnorm`, `_check_ffmpeg_codec`, `list_voices`, `shell`, `which`, `die`
+### ✅ 14. Добавить unit-тесты на `_run_loudnorm`, `_run_dynaudnorm`, `_check_ffmpeg_codec`, `list_voices`, `shell`, `which`, `die`
 
 - Priority: **low**
 - Cost: medium
@@ -247,7 +250,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟢 15. Исправить fallback `_get_codec()` при неизвестном кодеке
+### ✅ 15. Исправить fallback `_get_codec()` при неизвестном кодеке
 
 - Priority: **low**
 - Cost: low
@@ -261,7 +264,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟢 16. Перенести документацию в `doc/`
+### ✅ 16. Перенести документацию в `doc/`
 
 - Priority: **low**
 - Cost: low
@@ -293,7 +296,7 @@ class Entry(TypedDict):
 
 ---
 
-### 🟢 17. Добавить `.gitignore` для артефактов сборки и дистрибуции
+### ✅ 17. Добавить `.gitignore` для артефактов сборки и дистрибуции
 
 - Priority: **low**
 - Cost: low
@@ -306,6 +309,16 @@ dist/
 *.egg
 build/
 ```
+
+---
+
+### ✅ 18. RHVoice backend — локальный TTS
+
+- `--tts-backend rhvoice` — RHVoice через subprocess
+- Унифицированный `--voice` показывает голоса всех установленных бэкэндов
+- Фильтрация по `--lang` для показа голосов
+- Кэш разделён по бэкэнду
+- 122 теста, все проходят
 
 ---
 

@@ -8,6 +8,8 @@ import sys
 import textwrap
 
 from rusa_shared import (
+    RHVOICE_AVAILABLE,
+    RHVOICE_VOICES,
     CYAN,
     DEFAULT_ORIG_VOL,
     DEFAULT_SPEED,
@@ -46,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         const="__LIST__",
         default=None,
-        help="Голос edge-tts. Без аргумента — список голосов. По умолчанию автоопределение по языку субтитров",
+        help="Голос TTS. Без аргумента — список доступных голосов. --lang фильтрует по языку. По умолчанию автоопределение по языку субтитров",
     )
     parser.add_argument(
         "--lang",
@@ -99,17 +101,53 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["fast", "fine"],
         help="Нормализация громкости: fast (быстро) или fine (точно, по умолч.)",
     )
+    parser.add_argument(
+        "--tts-backend",
+        choices=["edge", "rhvoice"],
+        default="edge",
+        help="TTS бэкенд: edge (облачный, по умолч.) или rhvoice (локальный, apt install rhvoice)",
+    )
     return parser
 
 
-def list_voices() -> None:
-    print(f"{CYAN}Доступные голоса edge-tts:{NC}")
+def list_voices(lang: str | None = None) -> None:
+    """Print available voices from all installed TTS backends."""
+    from rusa_shared import RHVOICE_AVAILABLE
+
+    # edge-tts voices
+    print(f"{CYAN}edge-tts:{NC}")
     rc = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
-    if rc.returncode != 0:
-        die("edge-tts не отвечает", EXIT_DEPENDENCY_ERROR)
-    print(rc.stdout)
-    print("Фильтр по русским:")
-    for line in rc.stdout.split("\n"):
-        if "ru-" in line.lower():
-            print(f"  {line.strip()}")
+    if rc.returncode == 0:
+        for line in rc.stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if lang and f"-{lang}-" not in line.split(":")[-1].strip():
+                continue
+            print(f"  {line}")
+    else:
+        print("  (edge-tts не доступен)")
+
+    # RHVoice voices
+    if RHVOICE_AVAILABLE:
+        print(f"{CYAN}RHVoice:{NC}")
+        for voice_name, voice_lang in _list_rhvoice_voices():
+            if lang and voice_lang != lang:
+                continue
+            print(f"  {voice_name:<30s} [{voice_lang}]")
+    else:
+        print(f"{CYAN}RHVoice:{NC}")
+        print("  (не установлен, apt install rhvoice)")
+
     sys.exit(0)
+
+
+def _list_rhvoice_voices() -> list[tuple[str, str]]:
+    """Return [(voice_name, lang_code)] from RHVoice installation."""
+    from rusa_shared import RHVOICE_VOICES
+    # Build reverse map: voice -> lang
+    result: list[tuple[str, str]] = []
+    for lang_code, voices in RHVOICE_VOICES.items():
+        for v in voices:
+            result.append((v, lang_code))
+    return sorted(result, key=lambda x: x[0])

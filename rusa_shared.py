@@ -287,11 +287,11 @@ def tts_cache_dir() -> str | None:
     return cache_subdir("tts")
 
 
-def tts_cache_path(voice: str, text: str) -> str | None:
+def tts_cache_path(voice: str, text: str, backend: str = "edge") -> str | None:
     cache_dir = tts_cache_dir()
     if cache_dir is None:
         return None
-    digest = hashlib.sha256(f"{voice}\0{text}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{backend}\0{voice}\0{text}".encode("utf-8")).hexdigest()
     return os.path.join(cache_dir, f"{digest}.mp3")
 
 
@@ -408,6 +408,57 @@ def print_timing_summary(stage_durations: list[tuple[str, float]]) -> None:
     print("Timing:")
     for name, seconds in stage_durations:
         print(f"  {name}: {seconds:.1f}s")
+
+
+### RHVoice backend ###############################################
+
+RHVOICE_VOICES: dict[str, list[str]] = {
+    "ru": [
+        "elena", "irina", "aleksandr", "aleksandr-hq", "arina",
+        "artemiy", "evgeniy-rus", "lyubov", "mikhail", "natalia",
+        "pavel", "tatiana", "timofey", "victoria", "vitaliy",
+        "vitaliy-ng", "vlad", "vsevolod", "yuriy",
+    ],
+    "en": ["alan", "bdl", "clb", "evgeniy-eng", "slt"],
+    "de": ["klaus"],
+    "fr": ["sylvia"],
+}
+
+RHVOICE_AVAILABLE: bool = False
+
+
+def _probe_rhvoice() -> None:
+    """Set RHVOICE_AVAILABLE based on whether RHVoice-test is in PATH."""
+    global RHVOICE_AVAILABLE
+    RHVOICE_AVAILABLE = shutil.which("RHVoice-test") is not None
+
+
+def list_rhvoices() -> None:
+    """Print installed RHVoice voices by probing the data directory."""
+    # Fallback: try to enumerate voice files in standard locations
+    candidates: list[str] = []
+    search_dirs = [
+        "/usr/share/RHVoice/voices",
+        "/usr/local/share/RHVoice/voices",
+        "/usr/lib/RHVoice/voices",
+        "/usr/local/lib/RHVoice/voices",
+    ]
+    for d in search_dirs:
+        if os.path.isdir(d):
+            candidates.extend(sorted(f for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))))
+    if not candidates:
+        candidates = []
+        for lang_voices in RHVOICE_VOICES.values():
+            candidates.extend(lang_voices)
+        candidates = sorted(set(candidates))
+    if candidates:
+        print("Доступные голоса RHVoice:")
+        for v in candidates:
+            print(f"  {v}")
+    else:
+        print("RHVoice голоса не найдены. Установите через: apt install rhvoice rhvoice-voices")
+
+### End RHVoice backend ###########################################
 
 ### Terminal state guard ############################################
 _TERM_SAVED = False

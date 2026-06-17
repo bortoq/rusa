@@ -87,6 +87,7 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--from N`                   | First subtitle index                  | all                                |
 | `--to N`                     | Last subtitle index                   | all                                |
 | `--audio-only`               | Audio output only (no video)          | off                                |
+| `--tts-backend {edge,rhvoice}`      | TTS backend: edge (cloud) or rhvoice (local) | `edge`                |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
 

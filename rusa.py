@@ -22,6 +22,7 @@ from rusa_audio import step_assemble, step_convert_wav
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
 from rusa_shared import _restore_terminal, _save_terminal  # noqa: F401 — terminal guard
+from rusa_shared import RHVOICE_AVAILABLE, RHVOICE_VOICES, list_rhvoices  # noqa: F401 — rhvoice
 from rusa_shared import (          # noqa: F401 — re-exported as public API
     CODEC_MAP,
     DEFAULT_ORIG_VOL,
@@ -83,13 +84,14 @@ def _build_parser():
 def main() -> None:
     args = _get_parser().parse_args(sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
+    rusa_shared._probe_rhvoice()
     _save_terminal()
     atexit.register(_restore_terminal)
     signal.signal(signal.SIGINT, rusa_shared._term_handler)
     signal.signal(signal.SIGTERM, rusa_shared._term_handler)
     try:
         if args.voice == "__LIST__":
-            list_voices()
+            list_voices(args.lang)
         if args.cache_stats:
             print_cache_stats()
         if args.cache_clear:
@@ -108,9 +110,10 @@ def main() -> None:
         which("ffmpeg")
         which("ffprobe")
         which("python3")
-        rc = subprocess.run(["python3", "-m", "edge_tts", "--help"], check=False, capture_output=True)
-        if rc.returncode != 0:
-            die("edge-tts не установлен (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
+        if args.tts_backend != "rhvoice":
+            rc = subprocess.run(["python3", "-m", "edge_tts", "--help"], check=False, capture_output=True)
+            if rc.returncode != 0:
+                die("edge-tts не установлен (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
 
         audio_fmt = "opus"
         audio_bitrate = "64"
@@ -141,10 +144,11 @@ def main() -> None:
         else:
             voice = DEFAULT_VOICE
 
-        rc_list = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
-        if rc_list.returncode == 0 and voice not in rc_list.stdout:
-            warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
-            warn("Возможно, он удалён Microsoft. Генерация может не работать.")
+        if args.tts_backend != "rhvoice":
+            rc_list = subprocess.run(["python3", "-m", "edge_tts", "--list-voices"], check=False, capture_output=True, text=True)
+            if rc_list.returncode == 0 and voice not in rc_list.stdout:
+                warn(f"Голос '{voice}' отсутствует в списке edge-tts --list-voices")
+                warn("Возможно, он удалён Microsoft. Генерация может не работать.")
 
         if args.output:
             output = os.path.realpath(args.output)
@@ -202,7 +206,7 @@ def main() -> None:
             timings.append(("subtitles", time.perf_counter() - started))
 
             started = time.perf_counter()
-            tts_results = step_generate_tts(entries, voice, args.threads, tmpdir)
+            tts_results = step_generate_tts(entries, voice, args.threads, tmpdir, args.tts_backend)
             timings.append(("tts", time.perf_counter() - started))
 
             started = time.perf_counter()

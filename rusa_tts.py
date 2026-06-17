@@ -41,7 +41,46 @@ def _split_text(text: str, max_chars: int = MAX_TTS_CHARS) -> list[str]:
     return parts
 
 
-def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str) -> list[tuple[int, str]]:
+
+def _tts_generate(text: str, voice: str, out: str, backend: str) -> int:
+    """Generate TTS audio using the specified backend. Returns 0 on success."""
+    if backend == "edge":
+        rc = subprocess.run(
+            ["edge-tts", "--voice", voice, "--text", text, "--write-media", out],
+            capture_output=True,
+            timeout=180,
+            check=False,
+        ).returncode
+        return rc
+    elif backend == "rhvoice":
+        try:
+            proc = subprocess.run(
+                ["RHVoice-test", "-p", voice, "-o", "-"],
+                input=text.encode("utf-8"),
+                capture_output=True,
+                timeout=180,
+            )
+            if proc.returncode != 0 or not proc.stdout:
+                return proc.returncode or 1
+            # Pipe RHVoice WAV output through ffmpeg to produce MP3
+            rc = subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-f", "wav", "-i", "-",
+                 "-c", "libmp3lame", out],
+                check=False,
+                input=proc.stdout,
+                capture_output=True,
+                timeout=60,
+            )
+            return rc.returncode
+        except subprocess.TimeoutExpired:
+            return 1
+        except Exception:
+            return 1
+    else:
+        return 1
+
+
+def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str, backend: str = "edge") -> list[tuple[int, str]]:
     info(f"Генерация TTS ({len(entries)} файлов, {threads} потоков)...")
     tts_dir = os.path.join(tmpdir, "tts")
     os.makedirs(tts_dir, exist_ok=True)
@@ -55,7 +94,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
 
         parts = _split_text(text)
         out = os.path.join(tts_dir, f"batch_{idx:04d}.mp3")
-        cache_path = tts_cache_path(voice, text)
+        cache_path = tts_cache_path(voice, text, backend)
 
         if cache_path and os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
             shutil.copy2(cache_path, out)
@@ -67,12 +106,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
                     copy_into_cache(out, cache_path)
                     return idx, out
                 try:
-                    rc = subprocess.run(
-                        ["edge-tts", "--voice", voice, "--text", parts[0], "--write-media", out],
-                        capture_output=True,
-                        timeout=180,
-                        check=False,
-                    ).returncode
+                    rc = _tts_generate(parts[0], voice, out, backend)
                     if rc == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
                         copy_into_cache(out, cache_path)
                         return idx, out
@@ -93,12 +127,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
                     generated = True
                     break
                 try:
-                    rc = subprocess.run(
-                        ["edge-tts", "--voice", voice, "--text", part, "--write-media", part_out],
-                        capture_output=True,
-                        timeout=180,
-                        check=False,
-                    ).returncode
+                    rc = _tts_generate(part, voice, part_out, backend)
                     if rc == 0 and os.path.isfile(part_out) and os.path.getsize(part_out) > 100:
                         generated = True
                         break

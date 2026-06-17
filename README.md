@@ -83,6 +83,7 @@ python rusa.py movie.mkv
 | `--from N`                  | Начальный номер субтитра              | все                                |
 | `--to N`                    | Конечный номер субтитра               | все                                |
 | `--audio-only`              | Только аудио (без видео)              | выкл                               |
+| `--tts-backend {edge,rhvoice}`    | TTS бэкенд: edge (облачный) или rhvoice (локальный) | `edge` |
 | `--subs-mode {auto,copy,convert,drop}` | Режим работы с субтитрами в выходном видео | `auto` |
 | `--normalize [{fast,fine}]` | Нормализация громкости                | выкл                               |
 
@@ -149,6 +150,22 @@ rusa -s subs.srt --sync --opus 96 movie.mkv
 | `ru-RU-DmitryNeural`   | Мужской, нейронный             |
 
 Поддерживается **более 80 языков** — от английского и немецкого до японского и иврита. Полный список голосов: `rusa --voice`.
+
+### Локальный TTS (RHVoice)
+
+Если вы хотите работать **офлайн** и не зависеть от облачного edge-tts, rusa поддерживает **RHVoice** — локальный синтезатор речи.
+
+```bash
+# Установка RHVoice (Linux)
+sudo apt install rhvoice rhvoice-voices
+
+# Использование
+rusa --tts-backend rhvoice --voice elena movie.mkv
+```
+
+**Доступные русские голоса RHVoice:** `elena`, `irina`, `aleksandr`, `arina`, `lyubov`, `mikhail`, `natalia`, `pavel`, `tatiana`, `timofey`, `victoria`, `vitaliy` и другие. Полный список: `rusa --voice`.
+
+**Важно:** RHVoice должен быть установлен в системе отдельно — rusa не тянет его как pip-зависимость.
 
 Язык определяется автоматически: по расширению файла (`.ru.srt`, `.en.srt`, …) или через анализ содержимого субтитров (библиотека `langdetect`).
 Если вы используете `--lang`, rusa ищет именно субтитры этого языка и не подставляет произвольный соседний `movie.srt`.
