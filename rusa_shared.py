@@ -183,8 +183,46 @@ def lang_code_to_ffprobe_codes(lang: str) -> list[str]:
     return LANG_FFPROBE_MAP.get(lang, [lang])
 
 
+LANG_ALIAS: dict[str, str] = {
+    # English full names → ISO 639-1
+    "russian": "ru", "english": "en", "hebrew": "he",
+    "german": "de", "french": "fr", "spanish": "es",
+    "italian": "it", "portuguese": "pt", "japanese": "ja",
+    "korean": "ko", "chinese": "zh", "arabic": "ar",
+    "turkish": "tr", "dutch": "nl", "polish": "pl",
+    "swedish": "sv", "danish": "da", "finnish": "fi",
+    "norwegian": "no", "czech": "cs", "hungarian": "hu",
+    "ukrainian": "uk", "hindi": "hi", "indonesian": "id",
+    "thai": "th", "vietnamese": "vi", "greek": "el",
+    "romanian": "ro", "croatian": "hr", "serbian": "sr",
+    "bulgarian": "bg", "malay": "ms", "slovak": "sk",
+    # 3-letter ISO 639-2
+    "rus": "ru", "eng": "en", "heb": "he",
+    "deu": "de", "ger": "de", "fra": "fr", "fre": "fr",
+    "spa": "es", "ita": "it", "por": "pt",
+    "jpn": "ja", "kor": "ko", "zho": "zh", "chi": "zh",
+    "ara": "ar", "tur": "tr", "nld": "nl", "dut": "nl",
+    "pol": "pl", "swe": "sv", "dan": "da", "fin": "fi",
+    "nor": "no", "ces": "cs", "cze": "cs", "hun": "hu",
+    "ukr": "uk", "hin": "hi", "ind": "id",
+    "tha": "th", "vie": "vi", "ell": "el", "gre": "el",
+    "ron": "ro", "rum": "ro", "hrv": "hr", "srp": "sr",
+    "bul": "bg", "msa": "ms", "may": "ms", "slk": "sk", "slo": "sk",
+    # Russian full names
+    "русский": "ru", "английский": "en", "иврит": "he",
+    "немецкий": "de", "французский": "fr", "испанский": "es",
+    "итальянский": "it", "португальский": "pt", "японский": "ja",
+    "корейский": "ko", "китайский": "zh", "арабский": "ar",
+    "турецкий": "tr", "нидерландский": "nl", "польский": "pl",
+    "шведский": "sv", "датский": "da", "финский": "fi",
+    "норвежский": "no", "чешский": "cs", "венгерский": "hu",
+}
+
+
 def normalize_lang_code(code: str) -> str:
     code = code.lower().replace("_", "-")
+    if code in LANG_ALIAS:
+        return LANG_ALIAS[code]
     if code in LANG_VOICE_MAP:
         return code
     if code in FFPROBE_TO_ISO6391:

@@ -112,7 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def list_voices(lang: str | None = None) -> None:
     """Print available voices from all installed TTS backends."""
-    from rusa_shared import RHVOICE_AVAILABLE
+    from rusa_shared import RHVOICE_AVAILABLE, normalize_lang_code
+
+    # Normalize lang alias → ISO 639-1
+    if lang:
+        lang = normalize_lang_code(lang)
 
     # edge-tts voices
     print(f"{CYAN}edge-tts:{NC}")
