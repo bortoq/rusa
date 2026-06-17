@@ -573,6 +573,14 @@ class CustomCmdBackend(TtsBackend):
     @classmethod
     def set_template(cls, template: str) -> None:
         cls._cmd_template = template
+        # Derive backend name from the first word of the command
+        cls.name = template.split()[0] if template and template.split() else "custom"
+        # Strip common suffixes like -test, -cli, .exe for readability
+        base = cls.name.rsplit(".exe", 1)[0]
+        for suffix in ("-test", "-cli", ".exe"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+        cls.name = base or "custom"
 
     @classmethod
     def is_available(cls) -> bool:
@@ -591,7 +599,7 @@ class CustomCmdBackend(TtsBackend):
 
     @classmethod
     def lang_from_voice(cls, voice: str) -> str:
-        return voice[:2].lower()
+        return voice  # full voice name, we can't know the language
 
     @classmethod
     def validate_voice(cls, voice: str) -> str | None:
@@ -629,7 +637,7 @@ class CustomCmdBackend(TtsBackend):
 
 register_backend(CustomCmdBackend)
 
-### End TTS Backend abstraction ########################################### End TTS Backend abstraction ########################################
+### End TTS Backend abstraction ########################################
 
 ### Terminal state guard ############################################
 _TERM_SAVED = False
