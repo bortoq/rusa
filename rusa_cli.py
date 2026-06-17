@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """CLI parser and voice-listing helpers for rusa."""
+__all__ = ['build_parser', 'list_voices']
 
 import argparse
 import subprocess

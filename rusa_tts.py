@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """TTS generation helpers for rusa."""
+__all__ = ['_split_text', 'step_generate_tts']
 
 import os
 import re

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Subtitle extraction, language detection, sync, and parsing for rusa."""
+__all__ = ['Entry', 'detect_language_from_srt', 'step_extract_subtitles', 'step_sync_alass', 'step_parse_srt']
 
 import os
 import re

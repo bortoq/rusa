@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Audio conversion and assembly for rusa."""
+__all__ = ['step_convert_wav', 'step_assemble']
 
 import os
 import shutil
