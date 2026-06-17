@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Subtitle extraction, language detection, sync, and parsing for rusa."""
-__all__ = ['Entry', 'detect_language_from_srt', 'step_extract_subtitles', 'step_sync_alass', 'step_parse_srt']
+__all__ = ['Entry', 'detect_language_from_srt', 'step_extract_subtitles', 'step_sync_alass', 'step_parse_srt', "step_merge_srt_entries"]
 
 import os
 import re
@@ -223,3 +223,52 @@ def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None)
     count = len(entries)
     ok(f"{count} субтитров" + (f" (диапазон {lo}–{hi})" if range_from or range_to else ""))
     return entries, count
+
+
+def step_merge_srt_entries(entries: list[Entry], max_gap_ms: int = 200) -> list[Entry]:
+    """Merge consecutive subtitle entries that form a single sentence.
+
+    Heuristic: entry N and N+1 are merged when:
+      - entry N's text does NOT end with sentence-ending punctuation (.!?…—)
+      - AND the gap (N.end → N+1.start) is <= *max_gap_ms* ms
+        OR entry N+1's text starts with a lowercase letter
+
+    The merged entry inherits idx=N.idx, start_ms=N.start_ms, end_ms=N+1.end_ms,
+    and text = N.text + ' ' + N+1.text.  All entries are re-indexed 1..N.
+    """
+    if not entries:
+        return []
+
+    merged: list[Entry] = []
+    _sentence_end = re.compile(r"[.!?…—]$")
+    i = 0
+    while i < len(entries):
+        cur = dict(entries[i])  # shallow copy so we don't mutate caller's dict
+        j = i + 1
+        while j < len(entries):
+            nxt = entries[j]
+            gap = nxt["start_ms"] - cur["end_ms"]
+            cur_text: str = cur["text"]
+            nxt_text: str = nxt["text"]
+
+            # Does cur look like an unfinished sentence?
+            if _sentence_end.search(cur_text.rstrip('"»)')):
+                break  # sentence complete, stop merging
+
+            # Gap must be small, OR next line starts lowercase
+            if not (gap <= max_gap_ms or (nxt_text and nxt_text[0].islower())):
+                break  # not a continuation
+
+            # Merge
+            cur["text"] = cur_text + " " + nxt_text
+            cur["end_ms"] = nxt["end_ms"]
+            j += 1
+
+        merged.append(cur)
+        i = j
+
+    # Re-index
+    for idx, entry in enumerate(merged, 1):
+        entry["idx"] = idx
+
+    return merged

@@ -81,6 +81,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Режим субтитров в выходном видео: auto|copy|convert|drop (по умолч. auto)",
     )
     parser.add_argument(
+        "--merge-sentences",
+        action="store_true",
+        default=True,
+        help="Склеивать разорванные реплики (по умолч. вкл)",
+    )
+    parser.add_argument(
+        "--no-merge-sentences",
+        action="store_false",
+        dest="merge_sentences",
+        help="Не склеивать разорванные реплики",
+    )
+    parser.add_argument(
         "--normalize",
         nargs="?",
         const="fine",

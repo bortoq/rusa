@@ -60,7 +60,7 @@ from rusa_shared import (          # noqa: F401 — re-exported as public API
     warn,
     which,
 )
-from rusa_subtitle import detect_language_from_srt, step_extract_subtitles, step_parse_srt, step_sync_alass
+from rusa_subtitle import detect_language_from_srt, step_extract_subtitles, step_merge_srt_entries, step_parse_srt, step_sync_alass
 from rusa_tts import _split_text, step_generate_tts
 
 _PARSER = None
@@ -187,6 +187,11 @@ def main() -> None:
             entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
             if count == 0:
                 die("Не удалось распарсить ни одного субтитра из SRT. Проверьте формат файла.", EXIT_SUBTITLE_ERROR)
+            if args.merge_sentences:
+                merged_count = len(entries)
+                entries = step_merge_srt_entries(entries)
+                if len(entries) < merged_count:
+                    info(f"Склеено {merged_count - len(entries)} разорванных реплик")
             timings.append(("subtitles", time.perf_counter() - started))
 
             started = time.perf_counter()
