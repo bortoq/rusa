@@ -142,13 +142,14 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
         die("Нет сегментов для сборки")
     segments.sort(key=lambda seg: seg["start_ms"])
     max_end_ms = max(seg["start_ms"] + seg["duration_ms"] for seg in segments)
-    total_frames = int(max_end_ms * WAV_FRAMERATE / 1000)
-    total_data_bytes = total_frames * WAV_BPF
     print(f"  Сегментов: {len(segments)}, макс. длит.: {max_end_ms / 1000:.0f}s")
-
+    cur_frame = 0
+    overlaps = 0
+    chunk = 10 * 1024 * 1024
+    zero_chunk = b"\x00" * chunk
     with open(out_path, "wb") as handle:
         handle.write(b"RIFF")
-        handle.write(struct.pack("<I", 36 + total_data_bytes))
+        handle.write(struct.pack("<I", 36))
         handle.write(b"WAVE")
         handle.write(b"fmt ")
         handle.write(
@@ -164,47 +165,33 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
             )
         )
         handle.write(b"data")
-        handle.write(struct.pack("<I", total_data_bytes))
-        chunk = 10 * 1024 * 1024
-        remaining = total_data_bytes
-        while remaining > 0:
-            count = min(remaining, chunk)
-            handle.write(b"\x00" * count)
-            remaining -= count
+        handle.write(struct.pack("<I", 0))
 
-    cur_frame = 0
-    overlaps = 0
-    actual_max_frame = 0
-    with open(out_path, "rb+") as handle:
         for index, seg in enumerate(segments, 1):
             start_frame = int(seg["start_ms"] * WAV_FRAMERATE / 1000)
             target = max(cur_frame, start_frame)
             if target > start_frame:
                 overlaps += 1
-            offset = WAV_HEADER_SIZE + target * WAV_BPF
+            gap_bytes = (target - cur_frame) * WAV_BPF
+            while gap_bytes > 0:
+                count = min(gap_bytes, chunk)
+                if count == chunk:
+                    handle.write(zero_chunk)
+                else:
+                    handle.write(b"\x00" * count)
+                gap_bytes -= count
             with wave.open(seg["path"], "rb") as wav_handle:
                 frame_data = wav_handle.readframes(wav_handle.getnframes())
-            handle.seek(offset)
             handle.write(frame_data)
-            seg_end_frame = target + (len(frame_data) // WAV_BPF)
-            if seg_end_frame > actual_max_frame:
-                actual_max_frame = seg_end_frame
-            cur_frame = seg_end_frame
+            cur_frame = target + (len(frame_data) // WAV_BPF)
             if not HAS_TQDM and (index % 100 == 0 or index == len(segments)):
                 print(f"    ... {index}/{len(segments)}")
 
-    actual_data_bytes = actual_max_frame * WAV_BPF
-    if actual_data_bytes > total_data_bytes:
-        needed = WAV_HEADER_SIZE + actual_data_bytes
-        cur_size = os.path.getsize(out_path)
-        if needed > cur_size:
-            with open(out_path, "ab") as handle:
-                handle.write(b"\x00" * (needed - cur_size))
-        with open(out_path, "rb+") as handle:
-            handle.seek(4)
-            handle.write(struct.pack("<I", 36 + actual_data_bytes))
-            handle.seek(40)
-            handle.write(struct.pack("<I", actual_data_bytes))
+        actual_data_bytes = cur_frame * WAV_BPF
+        handle.seek(4)
+        handle.write(struct.pack("<I", 36 + actual_data_bytes))
+        handle.seek(40)
+        handle.write(struct.pack("<I", actual_data_bytes))
 
     if overlaps:
         pct = overlaps * 100 // len(segments)
