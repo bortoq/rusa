@@ -710,6 +710,46 @@ class RhvoiceBackend(TtsBackend):
 register_backend(EdgeTtsBackend)
 register_backend(RhvoiceBackend)
 
+def probe_system_tts() -> dict[str, str]:
+    """Scan the system for all known TTS executables.
+    Returns dict[name, status] where status is 'supported', 'detected', or None.
+    'supported' = rusa has a backend implementation for it.
+    'detected' = found on system but rusa doesn't support it yet.
+    """
+    from rusa_shared import BACKEND_REGISTRY
+
+    # Known backends (rusa has an implementation)
+    result: dict[str, str] = {}
+    for name, cls in BACKEND_REGISTRY.items():
+        result[name] = "supported" if cls.is_available() else "unsupported"
+
+    # Probe for other common TTS engines on the system
+    probes: list[tuple[str, str, str | list[str]]] = [
+        # (display_name, how_to_check, check_value)
+        ("espeak-ng",  "exec", "espeak-ng"),
+        ("espeak",     "exec", "espeak"),
+        ("gtts-cli",   "exec", "gtts-cli"),
+        ("festival",   "exec", "festival"),
+        ("spd-say",    "exec", "spd-say"),
+        ("piper",      "exec", "piper"),
+        ("mimic",      "exec", "mimic"),
+        ("say",        "exec", "say"),
+        ("coqui",      "exec", "coqui"),
+        ("mary-tts",   "exec", "mary-tts"),
+    ]
+
+    for display_name, check_type, check_val in probes:
+        if display_name in result:
+            continue  # already registered as supported
+        found = False
+        if check_type == "exec":
+            found = shutil.which(str(check_val)) is not None
+        if found:
+            result[display_name] = "detected"
+
+    return result
+
+
 ### End TTS Backend abstraction ########################################### Terminal state guard ############################################
 _TERM_SAVED = False
 _TERM_FD = -1

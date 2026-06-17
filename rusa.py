@@ -93,10 +93,24 @@ def main() -> None:
         if args.voice == "__LIST__":
             list_voices(args.lang)
         if args.tts_backend == "__LIST__":
-            print("Установленные TTS бэкенды:")
-            for name, cls in rusa_shared.BACKEND_REGISTRY.items():
-                status = "✓" if cls.is_available() else "✗ (не установлен)"
-                print(f"  {name:<12s} {status}")
+            all_tts = rusa_shared.probe_system_tts()
+
+            supported = {k: v for k, v in all_tts.items() if v == "supported"}
+            unsupported = {k: v for k, v in all_tts.items() if v == "unsupported"}
+            detected = {k: v for k, v in all_tts.items() if v == "detected"}
+
+            if supported:
+                print("Поддерживаемые TTS бэкенды (можно использовать --tts-backend):")
+                for name in sorted(supported):
+                    print(f"  ✓ {name}")
+            if unsupported:
+                print("\nПоддерживаются, но не установлены:")
+                for name in sorted(unsupported):
+                    print(f"  · {name}  (pip install {name}-tts или apt install {name})")
+            if detected:
+                print("\nДругие TTS-движки, найденные в системе (ещё не реализованы):")
+                for name in sorted(detected):
+                    print(f"  · {name}")
             sys.exit(0)
         if args.cache_stats:
             print_cache_stats()
