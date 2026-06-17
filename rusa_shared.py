@@ -573,14 +573,18 @@ class CustomCmdBackend(TtsBackend):
     @classmethod
     def set_template(cls, template: str) -> None:
         cls._cmd_template = template
-        # Derive backend name from the first word of the command
-        cls.name = template.split()[0] if template and template.split() else "custom"
-        # Strip common suffixes like -test, -cli, .exe for readability
-        base = cls.name.rsplit(".exe", 1)[0]
-        for suffix in ("-test", "-cli", ".exe"):
-            if base.endswith(suffix):
-                base = base[: -len(suffix)]
-        cls.name = base or "custom"
+        # Derive a display name from the first word of the command (for filenames etc.)
+        if template and template.split():
+            exe = template.split()[0]
+            base = exe.rsplit(".exe", 1)[0]
+            for suffix in ("-test", "-cli", ".exe"):
+                if base.endswith(suffix):
+                    base = base[: -len(suffix)]
+            cls._display_name = base or "custom"
+        else:
+            cls._display_name = "custom"
+        # .name stays "custom" so BACKEND_REGISTRY lookup always works
+        cls.name = "custom"
 
     @classmethod
     def is_available(cls) -> bool:

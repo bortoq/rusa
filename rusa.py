@@ -165,7 +165,7 @@ def main() -> None:
             lang_suffix = target_lang or backend_cls.lang_from_voice(voice)
             output = os.path.join(
                 os.path.dirname(video),
-                f"{base}_{backend_cls.name}_{lang_suffix}{ext}",
+                f"{base}_{getattr(backend_cls, '_display_name', backend_cls.name)}_{lang_suffix}{ext}",
             )
 
         sync_str = "вкл" if args.sync else "выкл"
