@@ -2,6 +2,7 @@
 """rusa — Russian Voiceover for Movies."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -194,7 +195,7 @@ def main() -> None:
             print_timing_summary(timings)
         finally:
             if not args.keep_temp:
-                __import__("shutil").rmtree(tmpdir, ignore_errors=True)
+                shutil.rmtree(tmpdir, ignore_errors=True)
             elif os.path.isdir(tmpdir):
                 info(f"Временные файлы: {tmpdir}")
     finally:

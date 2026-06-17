@@ -2,6 +2,8 @@
 """TTS generation helpers for rusa."""
 
 import os
+import re
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,7 +27,7 @@ def _split_text(text: str, max_chars: int = MAX_TTS_CHARS) -> list[str]:
     while len(text) > max_chars:
         chunk = text[:max_chars]
         split_at = -1
-        for match in __import__("re").finditer(r"[.!?\u2026]", chunk):
+        for match in re.finditer(r"[.!?\u2026]", chunk):
             split_at = match.end()
         if split_at == -1:
             split_at = chunk.rfind(" ")
@@ -55,7 +57,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
         cache_path = tts_cache_path(voice, text)
 
         if cache_path and os.path.isfile(cache_path) and os.path.getsize(cache_path) > 100:
-            __import__("shutil").copy2(cache_path, out)
+            shutil.copy2(cache_path, out)
             return idx, out
 
         if len(parts) == 1:
@@ -124,7 +126,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
             copy_into_cache(out, cache_path)
             return idx, out
         if part_files:
-            __import__("shutil").copy2(part_files[0], out)
+            shutil.copy2(part_files[0], out)
             if os.path.getsize(out) > 100:
                 copy_into_cache(out, cache_path)
                 return idx, out

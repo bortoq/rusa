@@ -4,6 +4,7 @@
 import json
 import os
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from rusa_shared import (
@@ -27,6 +28,7 @@ def _get_codec(codec_name: str, bitrate: str) -> tuple[str, str, str]:
     return (entry[0], f"{bitrate}k", entry[2])
 
 
+@lru_cache(maxsize=1)
 def _check_ffmpeg_codec(codec: str) -> bool:
     result = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], check=False, capture_output=True, text=True)
     if result.returncode != 0:
@@ -308,7 +310,7 @@ def step_mix_output(
             if rc.returncode == 0:
                 break
             last_err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
-            remaining_modes = subtitle_modes[index + 1 :]
+            remaining_modes = subtitle_modes[index + 1:]
             if subtitle_mode == "copy" and remaining_modes:
                 if _subtitle_copy_not_supported(last_err_text, output):
                     warn("Копирование субтитров в этот контейнер не поддерживается, пробую перекодировать их в SRT")

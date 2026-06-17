@@ -7,10 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
-import textwrap
 import time
-import wave
-from pathlib import Path
 
 HAS_TQDM = False
 HAS_LANGDETECT = False
@@ -19,12 +16,15 @@ try:
     HAS_TQDM = True
 except ImportError:
     pass
+
+# langdetect is optional; define fallbacks so downstream imports never crash
 try:
     from langdetect import detect, DetectorFactory, LangDetectException
     DetectorFactory.seed = 0
     HAS_LANGDETECT = True
 except ImportError:
-    pass
+    detect = None  # type: ignore[assignment]
+    LangDetectException = Exception  # type: ignore[misc]
 
 DEFAULT_VOICE = "ru-RU-SvetlanaNeural"
 DEFAULT_SPEED = "1.5"

@@ -2,6 +2,7 @@
 
 import os
 import struct
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -12,6 +13,8 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
+import rusa_audio
+import rusa_shared
 
 
 def _write_test_wav(path: str, duration_ms: int = 120) -> None:
@@ -50,14 +53,17 @@ def test_step_convert_wav_runs_ffmpeg_in_parallel_and_returns_sorted_results(
         try:
             time.sleep(0.05)
             _write_test_wav(wav_path)
-            return rusa.subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
         finally:
             with lock:
                 state["active"] -= 1
 
-    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+    # Isolate cache to a temp directory so we never hit stale entries
+    monkeypatch.setenv("RUSA_CACHE_DIR", str(tmp_path / "cache"))
+    # Patch subprocess.run in the module where convert_one actually calls it
+    monkeypatch.setattr(rusa_audio.subprocess, "run", fake_run)
 
-    results = rusa.step_convert_wav(tts_results, "1.5", str(tmp_path), threads=4)
+    results = rusa_audio.step_convert_wav(tts_results, "1.5", str(tmp_path), threads=4)
 
     assert [idx for idx, _, _ in results] == [1, 2, 3, 4]
     assert all(os.path.isfile(path) for _, path, _ in results)
