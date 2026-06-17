@@ -560,197 +560,78 @@ class EdgeTtsBackend(TtsBackend):
 
 
 # ---------------------------------------------------------------------------
-# RHVoice backend
-# ---------------------------------------------------------------------------
+register_backend(EdgeTtsBackend)
 
-# Hardcoded known voices (used when disk probing finds nothing)
-RHVOICE_VOICES: dict[str, list[str]] = {
-    "ru": [
-        "elena", "irina", "aleksandr", "aleksandr-hq", "arina",
-        "artemiy", "evgeniy-rus", "lyubov", "mikhail", "natalia",
-        "pavel", "tatiana", "timofey", "victoria", "vitaliy",
-        "vitaliy-ng", "vlad", "vsevolod", "yuriy",
-    ],
-    "en": ["alan", "bdl", "clb", "evgeniy-eng", "slt"],
-    "de": ["klaus"],
-    "fr": ["sylvia"],
-}
-
-RHVOICE_DEFAULT_VOICE: str = "elena"
-RHVOICE_AVAILABLE: bool = False
+### Custom TTS backend (--tts-cmd) ##################################
 
 
-def _probe_rhvoice() -> None:
-    """Set RHVOICE_AVAILABLE based on whether RHVoice-test is in PATH."""
-    global RHVOICE_AVAILABLE
-    RHVOICE_AVAILABLE = shutil.which("RHVoice-test") is not None
+class CustomCmdBackend(TtsBackend):
+    """User-defined TTS backend via --tts-cmd."""
+    name = "custom"
+    _cmd_template: str = ""
 
-
-def _installed_rhvoice_dict() -> dict[str, list[str]]:
-    """Return dict[lang_code, [voice_names]] of installed RHVoice voices by probing disk."""
-    search_dirs = [
-        "/usr/share/RHVoice/voices",
-        "/usr/local/share/RHVoice/voices",
-        "/usr/lib/RHVoice/voices",
-        "/usr/local/lib/RHVoice/voices",
-    ]
-    installed_voices: list[str] = []
-    for d in search_dirs:
-        if os.path.isdir(d):
-            for fname in os.listdir(d):
-                fpath = os.path.join(d, fname)
-                if os.path.isfile(fpath):
-                    name, _ = os.path.splitext(fname)
-                    installed_voices.append(name)
-    installed_voices = sorted(set(installed_voices))
-    # Build reverse map: voice -> lang from RHVOICE_VOICES
-    voice_to_lang: dict[str, str] = {}
-    for lang, voices in RHVOICE_VOICES.items():
-        for v in voices:
-            voice_to_lang[v] = lang
-    result: dict[str, list[str]] = {}
-    for v in installed_voices:
-        lang = voice_to_lang.get(v, "unknown")
-        result.setdefault(lang, []).append(v)
-    if not result and RHVOICE_VOICES:
-        result = dict(RHVOICE_VOICES)
-    return result
-
-
-def get_installed_rhvoice_voices() -> dict[str, list[str]]:
-    """Public alias for _installed_rhvoice_dict()."""
-    return _installed_rhvoice_dict()
-
-
-def list_rhvoices() -> None:
-    """Print installed RHVoice voices by probing the data directory."""
-    installed = _installed_rhvoice_dict()
-    candidates: list[str] = []
-    for voices in installed.values():
-        candidates.extend(voices)
-    candidates = sorted(set(candidates))
-    if candidates:
-        print("Доступные голоса RHVoice:")
-        for v in candidates:
-            print(f"  {v}")
-    else:
-        print("RHVoice голоса не найдены. Установите через: apt install rhvoice rhvoice-voices")
-
-
-class RhvoiceBackend(TtsBackend):
-    name = "rhvoice"
+    @classmethod
+    def set_template(cls, template: str) -> None:
+        cls._cmd_template = template
 
     @classmethod
     def is_available(cls) -> bool:
-        return RHVOICE_AVAILABLE
+        if not cls._cmd_template:
+            return False
+        exe = cls._cmd_template.split()[0]
+        return shutil.which(exe) is not None
 
     @classmethod
     def list_voices(cls) -> list[tuple[str, str]]:
-        installed = _installed_rhvoice_dict()
-        result: list[tuple[str, str]] = []
-        for lang_code, voices in installed.items():
-            for v in voices:
-                result.append((v, lang_code))
-        return sorted(result, key=lambda x: x[0])
+        return []
 
     @classmethod
     def get_default_voice(cls, lang: str) -> str | None:
-        installed = _installed_rhvoice_dict()
-        voices_for_lang = installed.get(lang, [])
-        if voices_for_lang:
-            return voices_for_lang[0]
-        # Fall back to hardcoded
-        fallback = RHVOICE_VOICES.get(lang, [RHVOICE_DEFAULT_VOICE])
-        return fallback[0]
+        return None
 
     @classmethod
     def lang_from_voice(cls, voice: str) -> str:
-        # Reverse lookup in RHVOICE_VOICES
-        for lang, voices in RHVOICE_VOICES.items():
-            if voice in voices:
-                return lang
         return voice[:2].lower()
 
     @classmethod
     def validate_voice(cls, voice: str) -> str | None:
-        all_rhv = [v for vv in RHVOICE_VOICES.values() for v in vv]
-        if voice not in all_rhv:
-            return f"Голос '{voice}' не найден среди известных RHVoice голосов. Доступные: {', '.join(sorted(set(all_rhv)))}"
         return None
 
-    @staticmethod
-    def generate(text: str, voice: str, out: str) -> int:
+    @classmethod
+    def generate(cls, text: str, voice: str, out: str) -> int:
+        if not cls._cmd_template:
+            return 1
+        in_file = out + ".custom_in.txt"
         try:
-            rhvoice_in = out + ".rhvoice_in.txt"
-            with open(rhvoice_in, "w", encoding="utf-8") as fh:
+            with open(in_file, "w", encoding="utf-8") as fh:
                 fh.write(text)
-            proc = subprocess.run(
-                ["RHVoice-test", "-p", voice, "-i", rhvoice_in, "-o", "-"],
-                capture_output=True, timeout=180,
-            )
-            try:
-                os.remove(rhvoice_in)
-            except OSError:
-                pass
-            if proc.returncode != 0 or not proc.stdout:
-                return proc.returncode or 1
-            rc = subprocess.run(
-                ["ffmpeg", "-y", "-loglevel", "error", "-f", "wav", "-i", "-",
-                 "-c", "libmp3lame", out],
-                check=False, input=proc.stdout, capture_output=True, timeout=60,
-            )
+            cmd = (cls._cmd_template
+                   .replace("{in}", in_file)
+                   .replace("{out}", out)
+                   .replace("{voice}", voice))
+            rc = subprocess.run(cmd, shell=True, capture_output=True, timeout=180)
+            if rc.returncode != 0:
+                err_msg = rc.stderr.decode("utf-8", errors="replace").strip()
+                if err_msg:
+                    print(f"  stderr: {err_msg}", file=sys.stderr)
             return rc.returncode
         except subprocess.TimeoutExpired:
             return 1
-        except Exception:
+        except Exception as exc:
+            print(f"  --tts-cmd error: {exc}", file=sys.stderr)
             return 1
+        finally:
+            try:
+                os.remove(in_file)
+            except OSError:
+                pass
 
 
-# Register backends
-register_backend(EdgeTtsBackend)
-register_backend(RhvoiceBackend)
+register_backend(CustomCmdBackend)
 
-def probe_system_tts() -> dict[str, str]:
-    """Scan the system for all known TTS executables.
-    Returns dict[name, status] where status is 'supported', 'detected', or None.
-    'supported' = rusa has a backend implementation for it.
-    'detected' = found on system but rusa doesn't support it yet.
-    """
-    from rusa_shared import BACKEND_REGISTRY
+### End TTS Backend abstraction ########################################### End TTS Backend abstraction ########################################
 
-    # Known backends (rusa has an implementation)
-    result: dict[str, str] = {}
-    for name, cls in BACKEND_REGISTRY.items():
-        result[name] = "supported" if cls.is_available() else "unsupported"
-
-    # Probe for other common TTS engines on the system
-    probes: list[tuple[str, str, str | list[str]]] = [
-        # (display_name, how_to_check, check_value)
-        ("espeak-ng",  "exec", "espeak-ng"),
-        ("espeak",     "exec", "espeak"),
-        ("gtts-cli",   "exec", "gtts-cli"),
-        ("festival",   "exec", "festival"),
-        ("spd-say",    "exec", "spd-say"),
-        ("piper",      "exec", "piper"),
-        ("mimic",      "exec", "mimic"),
-        ("say",        "exec", "say"),
-        ("coqui",      "exec", "coqui"),
-        ("mary-tts",   "exec", "mary-tts"),
-    ]
-
-    for display_name, check_type, check_val in probes:
-        if display_name in result:
-            continue  # already registered as supported
-        found = False
-        if check_type == "exec":
-            found = shutil.which(str(check_val)) is not None
-        if found:
-            result[display_name] = "detected"
-
-    return result
-
-
-### End TTS Backend abstraction ########################################### Terminal state guard ############################################
+### Terminal state guard ############################################
 _TERM_SAVED = False
 _TERM_FD = -1
 _TERM_ATTRS = None

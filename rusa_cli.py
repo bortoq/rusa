@@ -8,8 +8,6 @@ import sys
 import textwrap
 
 from rusa_shared import (
-    RHVOICE_AVAILABLE,
-    RHVOICE_VOICES,
     CYAN,
     DEFAULT_ORIG_VOL,
     DEFAULT_SPEED,
@@ -107,8 +105,17 @@ def build_parser() -> argparse.ArgumentParser:
         const="__LIST__",
         default="edge",
         help=(
-            "TTS бэкенд: edge (облачный, по умолч.) или rhvoice (локальный). "
+            "TTS бэкенд: edge (облачный, по умолч.). "
             "Без аргумента — показать установленные бэкенды и выйти."
+        ),
+    )
+    parser.add_argument(
+        "--tts-cmd",
+        metavar="ШАБЛОН",
+        default="",
+        help=(
+            "Произвольная TTS-команда. {in} = файл с текстом, {out} = аудиовыход, {voice} = --voice. "
+            "Пример: --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}'"
         ),
     )
     return parser
@@ -122,7 +129,7 @@ def list_voices(lang: str | None = None) -> None:
     if lang:
         lang = normalize_lang_code(lang)
 
-    for backend_name in ("edge", "rhvoice"):
+    for backend_name in ("edge",):
         backend_cls = BACKEND_REGISTRY.get(backend_name)
         if backend_cls is None:
             continue

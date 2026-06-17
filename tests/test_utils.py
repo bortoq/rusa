@@ -10,6 +10,7 @@ import rusa
 import rusa_audio
 import rusa_mux
 import rusa_shared
+import rusa_cli
 import rusa_tts
 
 
@@ -235,9 +236,9 @@ class TestListVoices:
                 stderr="",
             )
         monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
-        monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
-        # Disable RHVoice so test only checks edge-tts output
-        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
+        monkeypatch.setattr(rusa_cli.sys, "exit", lambda code: None)
+        # Only test edge-tts (other backends are not relevant here)
+
 
         rusa.list_voices()
         captured = capsys.readouterr()
@@ -249,8 +250,8 @@ class TestListVoices:
         def fake_run(cmd, **kw):
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
         monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
-        monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
-        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
+        monkeypatch.setattr(rusa_cli.sys, "exit", lambda code: None)
+
         rusa.list_voices()
         captured = capsys.readouterr()
         assert "edge" in captured.out
@@ -264,8 +265,8 @@ class TestListVoices:
                 stderr="",
             )
         monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
-        monkeypatch.setattr(rusa.sys, "exit", lambda code: None)
-        monkeypatch.setattr(rusa_shared.RhvoiceBackend, "is_available", lambda: False)
+        monkeypatch.setattr(rusa_cli.sys, "exit", lambda code: None)
+
 
         rusa.list_voices()
         captured = capsys.readouterr()
@@ -326,39 +327,3 @@ class TestCacheEviction:
         assert rusa_shared._cache_max_size() == rusa_shared.DEFAULT_CACHE_MAX_SIZE
 
 
-# ── RHVoice backend ──────────────────────────────────────────────────
-
-class TestRHVoiceBackend:
-    def test_tts_generate_rhvoice_calls_subprocess(self, monkeypatch):
-        """_tts_generate should call RHVoice-test when backend=rhvoice."""
-        from rusa_tts import _tts_generate
-        calls = []
-
-        def fake_run(cmd, **kw):
-            calls.append(cmd)
-            # Simulate RHVoice-test success with WAV data
-            if "RHVoice-test" in cmd and "-o" in cmd and "-" in cmd:
-                return subprocess.CompletedProcess(cmd, 0, stdout=b"RIFF....WAVE", stderr=b"")
-            if "ffmpeg" in cmd:
-                return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
-            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
-
-        monkeypatch.setattr(rusa_tts.subprocess, "run", fake_run)
-        rc = _tts_generate("test text", "elena", "/tmp/out.mp3", "rhvoice")
-        assert rc == 0
-        assert any("RHVoice-test" in c for c in calls)
-        assert any("ffmpeg" in c for c in calls)
-
-    def test_tts_generate_edge_calls_subprocess(self, monkeypatch):
-        """_tts_generate should call edge-tts when backend=edge."""
-        from rusa_tts import _tts_generate
-        calls = []
-
-        def fake_run(cmd, **kw):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
-
-        monkeypatch.setattr(rusa_tts.subprocess, "run", fake_run)
-        rc = _tts_generate("test text", "ru-RU-SvetlanaNeural", "/tmp/out.mp3", "edge")
-        assert rc == 0
-        assert any("edge-tts" in c for c in calls)

@@ -15,10 +15,9 @@
 - [x] Error UX: стабильные exit-коды (`EXIT_RUNTIME_ERROR`, `EXIT_USAGE_ERROR`, `EXIT_DEPENDENCY_ERROR`, `EXIT_SUBTITLE_ERROR`, `EXIT_CODEC_ERROR`)
 - [x] Тэсты: offline/live маркеры (`slow`, `live_tts`)
 - [x] 81 тест → 122 теста, все проходят
-- [x] RHVoice backend (`--tts-backend rhvoice`)
-- [x] Unified `--voice` (показывает голоса edge-tts + RHVoice)
-- [x] Фильтрация списка голосов по `--lang`
-- [x] TTS Backend Abstraction — `BACKEND_REGISTRY`, классы `EdgeTtsBackend`/`RhvoiceBackend`, добавление нового бэкенда без правки `rusa.py`
+- [x] Unified `--voice` (фильтрация по `--lang`)
+- [x] TTS Backend Abstraction — `BACKEND_REGISTRY`, `TtsBackend`, `EdgeTtsBackend`, `CustomCmdBackend`
+- [x] `--tts-cmd` — произвольная TTS-команда (`{in}` `{out}` `{voice}`)
 - [x] `_{backend}_{lang}` вместо `_dubbed` в имени выходного файла
 
 ---
@@ -314,13 +313,13 @@ build/
 
 ---
 
-### ✅ 18. RHVoice backend — локальный TTS
+### ✅ 18. CustomCmdBackend + удаление RHVoice
 
-- `--tts-backend rhvoice` — RHVoice через subprocess
-- Унифицированный `--voice` показывает голоса всех установленных бэкэндов
-- Фильтрация по `--lang` для показа голосов
-- Кэш разделён по бэкэнду
-- 122 теста, все проходят
+- `--tts-cmd` — произвольная TTS-команда с плейсхолдерами `{in}` `{out}` `{voice}`
+- `CustomCmdBackend` — класс для пользовательских TTS-движков
+- RHVoice удалён из встроенных бэкендов (доступен через `--tts-cmd`)
+- `--tts-backend` без аргумента показывает установленные бэкенды
+- `rusa --tts-backend wat` → понятная ошибка со списком допустимых
 
 ---
 
@@ -342,12 +341,10 @@ build/
 
 ## Suggested Next Order
 
-1. 🔴 **langdetect crash fix** — критическая регрессия
-2. 🟡 **Мёртвый код, `rusa_cache.py`, wildcard import, `__import__()`** — быстрые чистки
-3. 🟡 **Кэш `_check_ffmpeg_codec`** — микро-оптимизация
-4. 🟠 **`.rus.srt` / `--version` / `TypedDict` / build-backend** — средний приоритет
-5. 🟠 **Deduplicate `make_sine_wav`, `__all__`** — гигиена кода
-6. 🟢 **LRU eviction, doc/, тесты, fallback, .gitignore** — низкий приоритет
+Все пункты выполнены. Проект в стабильном состоянии:
+- Поддерживаемый бэкенд: `edge` (облачный, встроенный)
+- Произвольные TTS-движки: `--tts-cmd` (любой внешний бинарник)
+- Дальнейшее развитие: добавление новых бэкендов через `class NewBackend(TtsBackend)` + `register_backend()`
 
 ## Notes
 

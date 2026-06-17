@@ -83,7 +83,8 @@ python rusa.py movie.mkv
 | `--from N`                  | Начальный номер субтитра              | все                                |
 | `--to N`                    | Конечный номер субтитра               | все                                |
 | `--audio-only`              | Только аудио (без видео)              | выкл                               |
-| `--tts-backend {edge,rhvoice}`    | TTS бэкенд: edge (облачный) или rhvoice (локальный) | `edge` |
+| `--tts-cmd ШАБЛОН`                 | Произвольная TTS-команда (`{in}` `{out}` `{voice}`)  | —      |
+| `--tts-backend [edge]`          | TTS бэкенд: edge (облачный). Без аргумента — список  | `edge` |
 | `--subs-mode {auto,copy,convert,drop}` | Режим работы с субтитрами в выходном видео | `auto` |
 | `--normalize [{fast,fine}]` | Нормализация громкости                | выкл                               |
 
@@ -151,21 +152,27 @@ rusa -s subs.srt --sync --opus 96 movie.mkv
 
 Поддерживается **более 80 языков** — от английского и немецкого до японского и иврита. Полный список голосов: `rusa --voice`.
 
-### Локальный TTS (RHVoice)
+### Произвольный TTS-движок (--tts-cmd)
 
-Если вы хотите работать **офлайн** и не зависеть от облачного edge-tts, rusa поддерживает **RHVoice** — локальный синтезатор речи.
+Установлен любой TTS-движок, которого нет в rusa? Используйте `--tts-cmd`:
 
 ```bash
-# Установка RHVoice (Linux)
-sudo apt install rhvoice rhvoice-voices
+# espeak-ng
+rusa --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}' --voice ru movie.mkv
 
-# Использование
-rusa --tts-backend rhvoice --voice elena movie.mkv
+# RHVoice (через --tts-cmd)
+rusa --tts-cmd 'RHVoice-test -p {voice} -i {in} -o {out}' --voice elena movie.mkv
+
+# festival
+rusa --tts-cmd 'text2wave -o {out} {in}' movie.mkv
+
+# gtts-cli (Google TTS)
+rusa --tts-cmd 'gtts-cli --lang ru -o {out} -f {in}' movie.mkv
 ```
 
-**Доступные русские голоса RHVoice:** `elena`, `irina`, `aleksandr`, `arina`, `lyubov`, `mikhail`, `natalia`, `pavel`, `tatiana`, `timofey`, `victoria`, `vitaliy` и другие. Полный список: `rusa --voice`.
+**Плейсхолдеры:** `{in}` = файл с текстом, `{out}` = выходной аудио, `{voice}` = значение `--voice`.
 
-**Важно:** RHVoice должен быть установлен в системе отдельно — rusa не тянет его как pip-зависимость.
+**Важно:** команда должна быть в PATH или полный путь.
 
 Язык определяется автоматически: по расширению файла (`.ru.srt`, `.en.srt`, …) или через анализ содержимого субтитров (библиотека `langdetect`).
 Если вы используете `--lang`, rusa ищет именно субтитры этого языка и не подставляет произвольный соседний `movie.srt`.

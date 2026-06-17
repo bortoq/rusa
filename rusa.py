@@ -84,7 +84,7 @@ def _build_parser():
 def main() -> None:
     args = _get_parser().parse_args(sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
-    rusa_shared._probe_rhvoice()
+
     _save_terminal()
     atexit.register(_restore_terminal)
     signal.signal(signal.SIGINT, rusa_shared._term_handler)
@@ -93,24 +93,13 @@ def main() -> None:
         if args.voice == "__LIST__":
             list_voices(args.lang)
         if args.tts_backend == "__LIST__":
-            all_tts = rusa_shared.probe_system_tts()
-
-            supported = {k: v for k, v in all_tts.items() if v == "supported"}
-            unsupported = {k: v for k, v in all_tts.items() if v == "unsupported"}
-            detected = {k: v for k, v in all_tts.items() if v == "detected"}
-
-            if supported:
-                print("Поддерживаемые TTS бэкенды (можно использовать --tts-backend):")
-                for name in sorted(supported):
-                    print(f"  ✓ {name}")
-            if unsupported:
-                print("\nПоддерживаются, но не установлены:")
-                for name in sorted(unsupported):
-                    print(f"  · {name}  (pip install {name}-tts или apt install {name})")
-            if detected:
-                print("\nДругие TTS-движки, найденные в системе (ещё не реализованы):")
-                for name in sorted(detected):
-                    print(f"  · {name}")
+            print("TTS бэкенды, поддерживаемые rusa:")
+            for name, cls in sorted(rusa_shared.BACKEND_REGISTRY.items()):
+                status = "✓ установлен" if cls.is_available() else "✗ не установлен"
+                print(f"  {name:<10s} {status}")
+            print()
+            print("Для произвольного TTS-движка используйте --tts-cmd:")
+            print("  rusa --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}' ...")
             sys.exit(0)
         if args.cache_stats:
             print_cache_stats()
@@ -131,8 +120,13 @@ def main() -> None:
         which("ffprobe")
         which("python3")
 
+        # If --tts-cmd given, configure custom backend and switch to it
+        if args.tts_cmd:
+            rusa_shared.CustomCmdBackend.set_template(args.tts_cmd)
+            args.tts_backend = "custom"
+
         # Resolve TTS backend
-        valid_backends = ("edge", "rhvoice")
+        valid_backends = ("edge", "custom")
         if args.tts_backend not in valid_backends:
             die(
                 f"Неизвестный TTS бэкенд: '{args.tts_backend}'. "
