@@ -103,9 +103,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--tts-backend",
-        choices=["edge", "rhvoice"],
+        nargs="?",
+        const="__LIST__",
         default="edge",
-        help="TTS бэкенд: edge (облачный, по умолч.) или rhvoice (локальный, apt install rhvoice)",
+        help=(
+            "TTS бэкенд: edge (облачный, по умолч.) или rhvoice (локальный). "
+            "Без аргумента — показать установленные бэкенды и выйти."
+        ),
     )
     return parser
 

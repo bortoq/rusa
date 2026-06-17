@@ -92,6 +92,12 @@ def main() -> None:
     try:
         if args.voice == "__LIST__":
             list_voices(args.lang)
+        if args.tts_backend == "__LIST__":
+            print("Установленные TTS бэкенды:")
+            for name, cls in rusa_shared.BACKEND_REGISTRY.items():
+                status = "✓" if cls.is_available() else "✗ (не установлен)"
+                print(f"  {name:<12s} {status}")
+            sys.exit(0)
         if args.cache_stats:
             print_cache_stats()
         if args.cache_clear:
@@ -112,9 +118,16 @@ def main() -> None:
         which("python3")
 
         # Resolve TTS backend
-        backend_cls = BACKEND_REGISTRY.get(args.tts_backend)
+        valid_backends = ("edge", "rhvoice")
+        if args.tts_backend not in valid_backends:
+            die(
+                f"Неизвестный TTS бэкенд: '{args.tts_backend}'. "
+                f"Допустимые: {', '.join(valid_backends)}",
+                EXIT_USAGE_ERROR,
+            )
+        backend_cls = rusa_shared.BACKEND_REGISTRY.get(args.tts_backend)
         if backend_cls is None:
-            die(f"Неизвестный TTS бэкенд: {args.tts_backend}", EXIT_USAGE_ERROR)
+            die(f"TTS бэкенд '{args.tts_backend}' не зарегистрирован", EXIT_USAGE_ERROR)
         if not backend_cls.is_available():
             die(f"TTS бэкенд '{args.tts_backend}' не установлен", EXIT_DEPENDENCY_ERROR)
 
