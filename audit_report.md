@@ -287,7 +287,7 @@ README заявляет поддержку 20+ языков, но не все IS
 ### 7.2. CI (`test.yml`)
 
 ```yaml
-python-version: ["3.8", "3.11"]
+python-version: ["3.9", "3.11"]
 ```
 
 - Запускает `pytest -q -m 'not slow and not live_tts'`.

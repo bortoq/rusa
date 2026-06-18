@@ -6,7 +6,7 @@
 
 **Architecture:** The roadmap spans multiple independent subsystems, so execution should be split into phases that each produce working software and green tests. Phase 1 extends the current monolith with user-facing CLI/cache/test improvements, Phase 2 performs the module split on already-stable behavior, and Phase 3 tackles the higher-risk assembly memory and I/O redesign.
 
-**Tech Stack:** Python 3.8+, `argparse`, `ffmpeg`/`ffprobe`, `edge-tts`, `pytest`
+**Tech Stack:** Python 3.9+, `argparse`, `ffmpeg`/`ffprobe`, `edge-tts`, `pytest`
 
 ---
 

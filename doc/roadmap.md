@@ -540,6 +540,15 @@ Optional (later):
 | Gradio dependency increases package size | Make `gradio` an extra dep (`pip install rusa[webui]`) |
 
 
+### 25. Drop Python 3.8 support
+
+- Priority: **high**
+- Status: **completed**
+
+**Reason:** aiohttp dropped Python 3.8 support in v3.11 (Nov 2024). Python 3.8 is EOL (Oct 2024). CI consistently failed on 3.8.
+
+**Change:** `pyproject.toml` requires-python updated to `>=3.9`. CI matrix updated from `["3.8", "3.11"]` to `["3.9", "3.11", "3.13"]`.
+
 ## Notes
 
 - After each change — run full test suite: `PYTHONDONTWRITEBYTECODE=1 pytest -q tests/`
