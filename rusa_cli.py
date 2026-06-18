@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """CLI parser and voice-listing helpers for rusa."""
 __all__ = ['build_parser', 'list_voices']
 

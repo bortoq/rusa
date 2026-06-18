@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Declarative external TTS engine backend for rusa.
 
 Engines are defined in YAML files (bundled engines.yaml + user override in
 ~/.config/rusa/engines.yaml). Each engine only needs a binary, a generate
 command template, and optionally a voice list command/parser.
 """
-from __future__ import annotations
 
 import os
 import shlex

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Mixing, normalization, codec checks, and subtitle mux planning for rusa."""
 __all__ = ['step_mix_output', '_get_codec', '_check_ffmpeg_codec', '_subtitle_copy_not_supported', '_probe_subtitle_codecs', '_subtitle_copy_codecs_supported', '_subtitle_convert_codec', '_subtitle_mux_plan', '_build_video_mux_cmd', '_run_loudnorm', '_run_dynaudnorm']
 

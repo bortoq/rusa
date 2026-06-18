@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """TTS generation helpers for rusa."""
 __all__ = ['_split_text', 'step_generate_tts']
 

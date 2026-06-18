@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Audio conversion and assembly for rusa."""
 __all__ = ['step_convert_wav', 'step_assemble']
 

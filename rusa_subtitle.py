@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """Subtitle extraction, language detection, sync, and parsing for rusa."""
 __all__ = ['Entry', 'detect_language_from_srt', 'step_extract_subtitles', 'step_sync_alass', 'step_parse_srt', "step_merge_srt_entries"]
 
