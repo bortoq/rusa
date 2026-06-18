@@ -189,8 +189,10 @@ class TestBuildArgs:
 class TestApp:
     """webui/app.py — create_app()"""
 
-    def test_create_app(self):
+    def setup_method(self):
         pytest.importorskip("gradio")
+
+    def test_create_app(self):
         from webui.app import create_app
 
         app = create_app()
@@ -257,8 +259,10 @@ class TestApp:
 class TestComponents:
     """webui/components.py"""
 
-    def test_lang_selector_choices(self):
+    def setup_method(self):
         pytest.importorskip("gradio")
+
+    def test_lang_selector_choices(self):
         from webui.components import create_lang_selector
 
         dd = create_lang_selector()
