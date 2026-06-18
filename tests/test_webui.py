@@ -190,6 +190,7 @@ class TestApp:
     """webui/app.py — create_app()"""
 
     def test_create_app(self):
+        pytest.importorskip("gradio")
         from webui.app import create_app
 
         app = create_app()
@@ -257,6 +258,7 @@ class TestComponents:
     """webui/components.py"""
 
     def test_lang_selector_choices(self):
+        pytest.importorskip("gradio")
         from webui.components import create_lang_selector
 
         dd = create_lang_selector()
@@ -267,6 +269,9 @@ class TestComponents:
 
 class TestServerStartup:
     """webui/app.py main() — server startup edge cases."""
+
+    def setup_method(self):
+        pytest.importorskip("gradio")
 
     def test_port_conflict_shows_friendly_message(self, capsys, monkeypatch):
         """OSError from port conflict should show --port hint and exit(1)."""
@@ -481,6 +486,9 @@ class TestServerStartup:
 class TestUIIntegrity:
     """Verify UI components are correctly wired and functional."""
 
+    def setup_method(self):
+        pytest.importorskip("gradio")
+
     def test_video_input_is_file_upload(self):
         """The video input must be a gr.File (file picker), not gr.Textbox."""
         from webui.components import create_video_input
@@ -685,6 +693,9 @@ class TestOutputFilePicker:
 
 class TestOutputFilePickerIntegration:
     """Integration: output file picker in the UI."""
+
+    def setup_method(self):
+        pytest.importorskip("gradio")
 
     def test_output_file_picker_button_exists(self):
         """A button 'Выходной файл' must exist in the UI."""
