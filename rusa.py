@@ -7,6 +7,7 @@ Tests and external code should access everything through ``rusa.*``.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -81,6 +82,35 @@ def _build_parser():
     return _build_parser_impl()
 
 
+def _sanitize_filename_part(value: str) -> str:
+    """Strip characters that are unsafe or path-like from a filename segment."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "", value).strip("_-")[:20] or "custom"
+
+
+def _print_dry_run(args, backend_cls, voice, target_lang, output, entries):
+    """Print a summary of what would be generated and exit."""
+    print("Dry run plan:")
+    print(f"  Engine: {backend_cls.name}")
+    print(f"  Voice: {voice}")
+    print(f"  Language: {target_lang or 'auto'}")
+    print(f"  Output: {output}")
+    print(f"  Subtitles: {len(entries)}")
+    print(f"  Total text: {sum(len(e['text']) for e in entries)} chars")
+    if args.audio_only:
+        print("  Mode: audio only")
+    if args.speed != DEFAULT_SPEED:
+        print(f"  Speed: {args.speed}x")
+    if args.normalize:
+        print(f"  Normalize: {args.normalize}")
+    print("Sample subtitles:")
+    for entry in entries[:5]:
+        text = entry['text'][:80]
+        if len(entry['text']) > 80:
+            text += "..."
+        print(f"  #{entry['idx']} [{entry['start_ms']}ms]: {text}")
+    sys.exit(0)
+
+
 def main() -> None:
     args = _get_parser().parse_args(sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
@@ -91,7 +121,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, rusa_shared._term_handler)
     try:
         if args.voice == "__LIST__":
-            list_voices(args.lang)
+            list_voices(args.lang, args.engine)
         if args.cache_stats:
             print_cache_stats()
         if args.cache_clear:
@@ -115,6 +145,13 @@ def main() -> None:
         if args.tts_cmd:
             rusa_shared.CustomCmdBackend.set_template(args.tts_cmd)
             backend_cls = rusa_shared.CustomCmdBackend
+        elif args.engine:
+            engine_name = args.engine
+            backend_cls = BACKEND_REGISTRY.get(engine_name)
+            if backend_cls is None:
+                die(f"Неизвестный TTS-движок: {engine_name}", EXIT_USAGE_ERROR)
+            if not backend_cls.is_available():
+                die(f"Движок '{engine_name}' не найден в PATH", EXIT_DEPENDENCY_ERROR)
         else:
             backend_cls = rusa_shared.EdgeTtsBackend
             if not backend_cls.is_available():
@@ -130,11 +167,17 @@ def main() -> None:
                 audio_bitrate = value
                 break
 
+        if backend_cls.name == "custom" and not args.voice:
+            die(
+                "Для --tts-cmd необходимо явно указать --voice (голос произвольного TTS-движка).",
+                EXIT_USAGE_ERROR,
+            )
+
         target_lang = None
         if args.lang:
             target_lang = normalize_lang_code(args.lang)
             info(f"Язык субтитров: {target_lang}")
-        elif args.voice:
+        elif args.voice and backend_cls.name != "custom":
             target_lang = backend_cls.lang_from_voice(args.voice)
 
         if args.voice:
@@ -162,11 +205,23 @@ def main() -> None:
         else:
             base = os.path.splitext(os.path.basename(video))[0]
             ext = CODEC_MAP[audio_fmt][2] if args.audio_only else ".mkv"
-            lang_suffix = target_lang or backend_cls.lang_from_voice(voice)
+            if target_lang:
+                lang_suffix = target_lang
+            elif backend_cls.name == "custom":
+                lang_suffix = _sanitize_filename_part(voice)
+            else:
+                lang_suffix = backend_cls.lang_from_voice(voice)
+            display_name = getattr(backend_cls, "_display_name", backend_cls.name)
+            if callable(display_name):
+                display_name = display_name()
             output = os.path.join(
                 os.path.dirname(video),
-                f"{base}_{getattr(backend_cls, '_display_name', backend_cls.name)}_{lang_suffix}{ext}",
+                f"{base}_{display_name}_{lang_suffix}{ext}",
             )
+
+        if os.path.isfile(output):
+            warn(f"Выходной файл существует: {output}")
+            warn("Файл будет перезаписан. Используйте -o для указания другого имени.")
 
         sync_str = "вкл" if args.sync else "выкл"
         codec_info = _get_codec(audio_fmt, audio_bitrate)
@@ -195,6 +250,11 @@ def main() -> None:
             started = time.perf_counter()
             subs_path = step_extract_subtitles(video, args.srt, tmpdir, target_lang)
             if args.voice is None and args.lang is None:
+                if backend_cls.name == "custom":
+                    die(
+                        "Для --tts-cmd укажите --voice или --lang для определения языка субтитров.",
+                        EXIT_USAGE_ERROR,
+                    )
                 detected = detect_language_from_srt(subs_path)
                 if detected:
                     # detected is an edge-tts voice name; extract lang, find voice for this backend
@@ -209,8 +269,16 @@ def main() -> None:
             if args.sync:
                 subs_path = step_sync_alass(video, subs_path, tmpdir)
             entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
+            if args.preview is not None:
+                preview_count = max(1, args.preview)
+                entries = entries[:preview_count]
+                count = len(entries)
+                info(f"Режим preview: первые {count} субтитров")
             if count == 0:
                 die("Не удалось распарсить ни одного субтитра из SRT. Проверьте формат файла.", EXIT_SUBTITLE_ERROR)
+            if args.dry_run:
+                _print_dry_run(args, backend_cls, voice, target_lang, output, entries)
+                return
             if args.merge_sentences:
                 merged_count = len(entries)
                 entries = step_merge_srt_entries(entries)
@@ -230,7 +298,12 @@ def main() -> None:
             voiceover_wav = step_assemble(entries, wav_results, tmpdir)
             timings.append(("assemble", time.perf_counter() - started))
 
-            voiceover_lang = lang_code_to_ffprobe_codes(target_lang)[0] if target_lang else "rus"
+            if target_lang:
+                voiceover_lang = lang_code_to_ffprobe_codes(target_lang)[0]
+            elif backend_cls.name == "custom":
+                voiceover_lang = "und"
+            else:
+                voiceover_lang = "rus"
             started = time.perf_counter()
             step_mix_output(
                 video,

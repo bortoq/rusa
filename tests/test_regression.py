@@ -328,17 +328,22 @@ def test_wav_header_after_mix(fixtures_ready, tmp_path):
 # ── Voice detection pipeline test ───────────────────────────────
 
 def test_voice_resolution_with_external_srt(fixtures_ready, tmp_path):
-    """Test that voice is correctly resolved with ru.srt extension."""
-    # Simulate the main() logic for voice resolution
-    srt_path = str(FIXTURES_DIR / "ru_subtitles.srt")
+    """Test that voice is correctly resolved with .ru.srt extension."""
+    # The filename-based detector expects a pattern like *.ru.srt, not ru_subtitles.srt
+    srt_path = tmp_path / "movie.ru.srt"
+    srt_path.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\n"
+        "Это русский текст для проверки определения языка\n",
+        encoding="utf-8",
+    )
 
     # With explicit --voice
     explicit = "ru-RU-DmitryNeural"
     assert explicit != rusa.DEFAULT_VOICE
 
     # Without explicit --voice (auto-detect)
-    detected = rusa.detect_language_from_srt(srt_path)
-    assert detected is not None, "Should detect language from ru_subtitles.srt"
+    detected = rusa.detect_language_from_srt(str(srt_path))
+    assert detected is not None, "Should detect language from *.ru.srt filename"
     assert "ru-RU" in detected, f"Expected Russian voice, got {detected}"
 
 

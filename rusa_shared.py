@@ -5,6 +5,7 @@ __all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException'
 import hashlib
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -131,6 +132,19 @@ LANG_VOICE_MAP = {
     "cs": "cs-CZ-VlastaNeural",
     "hu": "hu-HU-NoemiNeural",
     "he": "he-IL-HilaNeural",
+
+    "bg": "bg-BG-KalinaNeural",
+    "el": "el-GR-AthinaNeural",
+    "hi": "hi-IN-SwaraNeural",
+    "hr": "hr-HR-GabrijelaNeural",
+    "id": "id-ID-GadisNeural",
+    "ms": "ms-MY-YasminNeural",
+    "ro": "ro-RO-AlinaNeural",
+    "sk": "sk-SK-ViktoriaNeural",
+    "sr": "sr-RS-SophieNeural",
+    "th": "th-TH-PremwadeeNeural",
+    "uk": "uk-UA-UlianaNeural",
+    "vi": "vi-VN-HoaiMyNeural",
 }
 
 LANG_FFPROBE_MAP: dict[str, list[str]] = {
@@ -152,9 +166,22 @@ LANG_FFPROBE_MAP: dict[str, list[str]] = {
     "sv": ["swe", "sv", "swedish"],
     "da": ["dan", "da", "danish"],
     "fi": ["fin", "fi", "finnish"],
-    "nb": ["nor", "nb", "norwegian"],
+    "nb": ["nor", "nb", "no", "norwegian"],
     "cs": ["ces", "cze", "cs", "czech"],
     "hu": ["hun", "hu", "hungarian"],
+
+    "bg": ["bul", "bg", "bulgarian"],
+    "el": ["ell", "gre", "el", "greek"],
+    "hi": ["hin", "hi", "hindi"],
+    "hr": ["hrv", "hr", "croatian"],
+    "id": ["ind", "id", "indonesian"],
+    "ms": ["msa", "may", "ms", "malay"],
+    "ro": ["ron", "rum", "ro", "romanian"],
+    "sk": ["slk", "slo", "sk", "slovak"],
+    "sr": ["srp", "sr", "serbian"],
+    "th": ["tha", "th", "thai"],
+    "uk": ["ukr", "uk", "ukrainian"],
+    "vi": ["vie", "vi", "vietnamese"],
 }
 
 FFPROBE_TO_ISO6391: dict[str, str] = {}
@@ -191,7 +218,7 @@ LANG_ALIAS: dict[str, str] = {
     "korean": "ko", "chinese": "zh", "arabic": "ar",
     "turkish": "tr", "dutch": "nl", "polish": "pl",
     "swedish": "sv", "danish": "da", "finnish": "fi",
-    "norwegian": "no", "czech": "cs", "hungarian": "hu",
+    "norwegian": "nb", "norsk": "nb", "no": "nb", "czech": "cs", "hungarian": "hu",
     "ukrainian": "uk", "hindi": "hi", "indonesian": "id",
     "thai": "th", "vietnamese": "vi", "greek": "el",
     "romanian": "ro", "croatian": "hr", "serbian": "sr",
@@ -504,6 +531,7 @@ def register_backend(backend_cls: type[TtsBackend]) -> None:
 
 class EdgeTtsBackend(TtsBackend):
     name = "edge"
+    _display_name = "edge-tts"
 
     @classmethod
     def is_available(cls) -> bool:
@@ -577,7 +605,7 @@ class CustomCmdBackend(TtsBackend):
         if template and template.split():
             exe = template.split()[0]
             base = os.path.basename(exe).rsplit(".exe", 1)[0]
-            for suffix in ("-test", "-cli", ".exe"):
+            for suffix in ("-test", "-cli", ".exe", ".py", ".sh", ".pl", ".rb"):
                 if base.endswith(suffix):
                     base = base[: -len(suffix)]
             cls._display_name = base or "custom"
@@ -618,9 +646,9 @@ class CustomCmdBackend(TtsBackend):
             with open(in_file, "w", encoding="utf-8") as fh:
                 fh.write(text)
             cmd = (cls._cmd_template
-                   .replace("{in}", in_file)
-                   .replace("{out}", out)
-                   .replace("{voice}", voice))
+                   .replace("{in}", shlex.quote(in_file))
+                   .replace("{out}", shlex.quote(out))
+                   .replace("{voice}", shlex.quote(voice)))
             rc = subprocess.run(cmd, shell=True, capture_output=True, timeout=180)
             if rc.returncode != 0:
                 err_msg = rc.stderr.decode("utf-8", errors="replace").strip()
@@ -642,6 +670,13 @@ class CustomCmdBackend(TtsBackend):
 register_backend(CustomCmdBackend)
 
 ### End TTS Backend abstraction ########################################
+
+# Register declarative external engines defined in engines.yaml / user config.
+try:
+    import rusa_engines
+    rusa_engines.register_external_engines()
+except ImportError:
+    pass
 
 ### Terminal state guard ############################################
 _TERM_SAVED = False

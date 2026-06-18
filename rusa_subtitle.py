@@ -2,6 +2,7 @@
 """Subtitle extraction, language detection, sync, and parsing for rusa."""
 __all__ = ['Entry', 'detect_language_from_srt', 'step_extract_subtitles', 'step_sync_alass', 'step_parse_srt', "step_merge_srt_entries"]
 
+import html
 import os
 import re
 import shutil
@@ -57,6 +58,18 @@ def detect_language_from_srt(srt_path: str) -> str | None:
             "nor": "nb", "norsk": "nb",
             "ces": "cs", "cze": "cs", "czech": "cs",
             "hun": "hu", "hungarian": "hu",
+            "bul": "bg", "bulgarian": "bg",
+            "ell": "el", "gre": "el", "greek": "el",
+            "hin": "hi", "hindi": "hi",
+            "hrv": "hr", "croatian": "hr",
+            "ind": "id", "indonesian": "id",
+            "msa": "ms", "may": "ms", "malay": "ms",
+            "ron": "ro", "rum": "ro", "romanian": "ro",
+            "slk": "sk", "slo": "sk", "slovak": "sk",
+            "srp": "sr", "serbian": "sr",
+            "tha": "th", "thai": "th",
+            "ukr": "uk", "ukrainian": "uk",
+            "vie": "vi", "vietnamese": "vi",
         }
         iso = lang_map.get(code, code)
         if iso in LANG_VOICE_MAP:
@@ -208,7 +221,10 @@ def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None)
 
         start_ms = to_ms(*groups[:4])
         end_ms = to_ms(*groups[4:])
-        text = re.sub(r"\s+", " ", " ".join(lines[2:])).strip()
+        text = " ".join(lines[2:])
+        text = html.unescape(text)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
         entries.append({"idx": idx, "start_ms": start_ms, "end_ms": end_ms, "text": text})
 
     if range_from is not None or range_to is not None:

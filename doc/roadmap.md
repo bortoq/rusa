@@ -345,6 +345,102 @@ build/
 - Произвольные TTS-движки: `--tts-cmd` (любой внешний бинарник)
 - Дальнейшее развитие: добавление новых бэкендов через `class NewBackend(TtsBackend)` + `register_backend()`
 
+
+
+---
+
+## Audit 2026-06-18 — Полный аудит проекта
+
+**Статус:** APPROVED ✅. 129 офлайн-тестов + 4 live-теста, все проходят.
+
+### Уже сделано (предыдущим аудитором)
+
+- [x] `shlex.quote` для плейсхолдеров `{in}` `{out}` `{voice}` в `CustomCmdBackend.generate` — защита от shell-инъекций
+- [x] `_sanitize_filename_part()` для `lang_suffix` в `CustomCmdBackend` — безопасные имена файлов
+- [x] `voiceover_lang = "und"` для `--tts-cmd` без `--lang` — валидные ISO-коды в метаданных
+- [x] Языковые алиасы: `norwegian` → `nb`, `norsk` → `nb`, `no` → `nb`
+- [x] `__all__` во всех модулях (8/8)
+- [x] `lru_cache` для `_check_ffmpeg_codec` — устранение множественных вызовов `ffmpeg -encoders`
+- [x] `_get_codec` возвращает `None` вместо opus-fallback при неизвестном кодеке
+- [x] Регекс детекции языка: `[a-z]{2,7}` + маппинг `rus→ru`, `russian→ru`, `english→en`, `hebrew→he`
+- [x] `make_sine_wav` вынесена в `conftest.py`, удалено дублирование из `test_assembly.py`
+- [x] `import textwrap` перенесён в начало `conftest.py`
+- [x] Мёртвый код `if not output` удалён из `step_mix_output`
+- [x] `_split_text` улучшен: разбиение после `[.!?…](\s|$)` вместо любого знака
+- [x] `list_voices` фильтр исправлен: `startswith(f"{lang}-")` вместо `"-{lang}-" not in`
+- [x] Тест `test_voice_resolution_with_external_srt` исправлен (не зависит от `langdetect`)
+- [x] `README.en.md` — удалён флаг `--tts-backend`
+
+### Priorities (новые)
+
+#### ✅ 20. Удалить дублирующиеся roadmap.md и implementation_plan.md из корня
+
+- Priority: **high**
+- Cost: low
+- Risk: low
+
+**Проблема:** `roadmap.md` и `implementation_plan.md` лежат и в корне, и в `doc/`. Это дублирование, нарушающее roadmap #16.
+
+**Решение:** Удалить root-копии. Каноничные файлы — `doc/roadmap.md` и `doc/implementation_plan.md`.
+
+---
+
+#### ✅ 21. Добавить предупреждение о перезаписи выходного файла
+
+- Priority: **medium**
+- Cost: low
+- Risk: low
+
+**Файл:** `rusa.py`, `main()`
+
+**Проблема:** `rusa` перезаписывает выходной файл с `-y` ffmpeg без предупреждения.
+
+**Решение:** Перед запуском ffmpeg проверять, существует ли `output`; если да — выводить предупреждение и спрашивать подтверждение (или просто предупреждать, если не `--yes`/`--overwrite`).
+
+---
+
+#### ✅ 22. Расширить `LANG_VOICE_MAP` для неподдерживаемых языков
+
+- Priority: **medium**
+- Cost: low
+- Risk: low
+
+**Файл:** `rusa_shared.py`
+
+**Проблема:** Алиасы `ukrainian`, `hindi`, `indonesian`, `thai`, `vietnamese`, `greek`, `romanian`, `croatian`, `serbian`, `bulgarian`, `malay`, `slovak` ведут на ISO-коды, отсутствующие в `LANG_VOICE_MAP`, что вызывает ошибку "Язык не поддерживается".
+
+**Решение:** Добавить соответствующие голоса Edge TTS для этих языков. Если голос неизвестен — убрать алиас или выдавать понятное сообщение.
+
+---
+
+#### 23. Рассмотреть полный отказ от `shell=True` в `CustomCmdBackend`
+
+- Priority: **low**
+- Cost: medium
+- Risk: medium
+
+**Файл:** `rusa_shared.py`, `CustomCmdBackend.generate`
+
+**Проблема:** `shlex.quote` снижает риск shell-инъекций, но не устраняет его полностью. `shell=True` позволяет пайпы и редиректы в шаблоне пользователя, что удобно, но опасно.
+
+**Решение:** 
+- Вариант A: оставить `shell=True` + `shlex.quote` (текущий)
+- Вариант B: разбирать шаблон на список аргументов, запускать с `shell=False` (безопаснее, но ломает пайпы)
+- Вариант C: документировать риски и рекомендовать не использовать шаблоны с пайпами
+
+---
+
+## Remaining Items (из предыдущего аудита)
+
+Эти пункты зафиксированы в `audit_report.md` и остаются актуальными для будущих итераций:
+
+1. Добавить встроенные голоса Edge TTS для языков: uk, hi, id, th, vi, el, ro, hr, sr, bg, ms, sk
+2. Добавить `--overwrite` / предупреждение о перезаписи выходного файла
+3. Рассмотреть отказ от `shell=True` в `CustomCmdBackend`
+4. Кэшировать результат `EdgeTtsBackend.validate_voice` (сейчас вызывает `--list-voices` каждый раз)
+5. Унифицировать `cache_bucket_stats` (рекурсивный) и `_evict_oldest` (один уровень)
+6. Вынести логику `print_cache_stats`/`clear_cache` отдельно от `sys.exit`
+
 ## Notes
 
 - После каждого изменения — полный прогон тестов: `PYTHONDONTWRITEBYTECODE=1 pytest -q tests/`

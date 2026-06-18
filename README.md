@@ -75,7 +75,9 @@ python rusa.py movie.mkv
 | `--threads N`               | Количество потоков TTS                | `6`                                |
 | `--cache-stats`             | Показать статистику TTS/WAV-кэша и выйти | выкл                            |
 | `--cache-clear`             | Очистить TTS/WAV-кэш и выйти          | выкл                               |
-| `--no-cache`                | Не читать и не писать кэш в этом запуске | выкл                            |
+| `--no-cache` | Не читать и не писать кэш в этом запуске | выкл |
+| `--dry-run` | Показать план генерации без запуска TTS и рендера | выкл |
+| `--preview N` | Сгенерировать только первые N субтитров | выкл |
 | `--aac [BITRATE]`           | Кодек AAC (128, 192, …)               | выкл                               |
 | `--mp3 [BITRATE]`           | Кодек MP3 (128, 192, …)               | выкл                               |
 | `--opus [BITRATE]`          | Кодек Opus (64, 96, …)                | выкл (по умолч. 64k)               |
@@ -83,7 +85,8 @@ python rusa.py movie.mkv
 | `--from N`                  | Начальный номер субтитра              | все                                |
 | `--to N`                    | Конечный номер субтитра               | все                                |
 | `--audio-only`              | Только аудио (без видео)              | выкл                               |
-| `--tts-cmd ШАБЛОН` | Произвольная TTS-команда (`{in}` `{out}` `{voice}`) | — |
+| `--engine ENGINE` | TTS-движок (edge, piper, rhvoice, espeak, gtts, festival или пользовательский из `~/.config/rusa/engines.yaml`) | `edge` |
+| `--tts-cmd ШАБЛОН` | Произвольная TTS-команда (`{in}` `{out}` `{voice}`). При использовании `--tts-cmd` игнорируется `--engine` | — |
 | `--subs-mode {auto,copy,convert,drop}` | Режим работы с субтитрами в выходном видео | `auto` |
 | `--normalize [{fast,fine}]` | Нормализация громкости                | выкл                               |
 
@@ -175,6 +178,44 @@ rusa --tts-cmd '/home/user/bin/tts_silero.py {in} {out} {voice}' --voice baya mo
 **Плейсхолдеры:** `{in}` = файл с текстом, `{out}` = выходной аудио, `{voice}` = значение `--voice`.
 
 **Важно:** команда должна быть в PATH или полный путь.
+
+### Встроенные движки (`--engine`)
+
+Кроме `edge` (Microsoft Edge TTS) rusa поддерживает локальные/альтернативные движки через единый декларативный бэкенд:
+
+```bash
+# Piper (локальный нейронный TTS)
+rusa --engine piper --voice ru_RU-dmitri-medium movie.mkv
+
+# RHVoice
+rusa --engine rhvoice --voice elena movie.mkv
+
+# espeak-ng
+rusa --engine espeak --voice ru movie.mkv
+
+# Google TTS (gtts-cli)
+rusa --engine gtts --voice ru movie.mkv
+
+# Festival
+rusa --engine festival movie.mkv
+
+# Список голосов для конкретного движка
+rusa --voice --engine piper
+```
+
+Движки описаны в `engines.yaml` рядом с кодом. Пользователь может добавить свой движок в `~/.config/rusa/engines.yaml`:
+
+```yaml
+engines:
+  my_tts:
+    display_name: my_tts
+    binary: my_tts_bin
+    output_format: wav
+    default_voice: default
+    static_voices: [default, alt]
+    generate_cmd: "my_tts_bin --voice {voice} --input {in} --output {out}"
+    voice_parser: static
+``` При использовании `--tts-cmd` параметр `--voice` обязателен. Параметр `--lang` управляет поиском субтитров и языковыми метаданными выходного трека.
 
 Язык определяется автоматически: по расширению файла (`.ru.srt`, `.en.srt`, …) или через анализ содержимого субтитров (библиотека `langdetect`).
 Если вы используете `--lang`, rusa ищет именно субтитры этого языка и не подставляет произвольный соседний `movie.srt`.
@@ -365,6 +406,10 @@ Timing:
 ```
 
 Это нужно для практической оптимизации: видно, где именно уходит время на вашей машине и даёт ли эффект кэш, число потоков или смена контейнера/кодека.
+
+## Документация
+- [roadmap](doc/roadmap.md) — план развития и статус
+- [implementation_plan](doc/implementation_plan.md) — поэтапный план реализации
 
 ## Лицензия
 

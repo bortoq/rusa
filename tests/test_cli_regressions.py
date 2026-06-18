@@ -63,14 +63,14 @@ def test_main_rejects_unsupported_lang_without_explicit_voice(monkeypatch, tmp_p
         "run",
         lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="", stderr=""),
     )
-    monkeypatch.setattr(sys, "argv", ["rusa", "--lang", "el", str(video)])
+    monkeypatch.setattr(sys, "argv", ["rusa", "--lang", "xh", str(video)])
 
     with pytest.raises(SystemExit):
         rusa.main()
 
     captured = capsys.readouterr()
     assert "--voice" in captured.err
-    assert "el" in captured.err
+    assert "xh" in captured.err
 
 
 def test_step_mix_output_preflights_mov_text_subtitles_to_srt_for_mkv(monkeypatch, tmp_path):
@@ -125,6 +125,139 @@ def test_step_mix_output_preflights_mov_text_subtitles_to_srt_for_mkv(monkeypatc
 def test_parser_subs_mode_defaults_to_auto():
     args = rusa._get_parser().parse_args(["movie.mkv"])
     assert args.subs_mode == "auto"
+
+
+def test_custom_cmd_display_name_uses_basename_only(monkeypatch, tmp_path):
+    """Regression for 0185b91: absolute path in --tts-cmd must not create slashes in output filename."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"fake")
+    custom_script = tmp_path / "bin" / "tts_silero.py"
+    custom_script.parent.mkdir(parents=True)
+    custom_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    custom_script.chmod(0o755)
+
+    received_output: list[str] = []
+
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setattr(
+        rusa.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr=""),
+    )
+    monkeypatch.setattr(sys, "argv", [
+        "rusa",
+        "--tts-cmd", f"{custom_script} {{in}} {{out}} {{voice}}",
+        "--voice", "baya",
+        "--lang", "ru",
+        str(video),
+    ])
+    monkeypatch.setattr(
+        rusa, "step_extract_subtitles",
+        lambda video, srt, tmpdir, target_lang=None: str(tmp_path / "subs.srt"),
+    )
+    monkeypatch.setattr(rusa, "detect_language_from_srt", lambda srt: None)
+    monkeypatch.setattr(rusa, "step_parse_srt", lambda *args, **kwargs: ([{"idx": 1, "start_ms": 0, "end_ms": 1000, "text": "test"}], 1))
+    monkeypatch.setattr(rusa, "step_generate_tts", lambda *args, **kwargs: [(1, str(tmp_path / "line.mp3"))])
+    monkeypatch.setattr(rusa, "step_convert_wav", lambda *args, **kwargs: [(1, str(tmp_path / "line.wav"), 100.0)])
+    monkeypatch.setattr(rusa, "step_assemble", lambda *args, **kwargs: str(tmp_path / "voiceover.wav"))
+    monkeypatch.setattr(rusa, "step_mix_output", lambda *args, **kwargs: received_output.append(args[4]))
+
+    rusa.main()
+
+    assert len(received_output) == 1
+    output = received_output[0]
+    assert os.path.basename(output) == "movie_tts_silero_ru.mkv"
+    assert "/" not in os.path.basename(output)
+    assert str(custom_script) not in output
+
+
+def test_dry_run_prints_plan_and_exits(monkeypatch, tmp_path, capsys):
+    """--dry-run should print plan and exit without generating TTS."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"fake")
+    srt = tmp_path / "movie.srt"
+    srt.write_text(
+        "1\n00:00:01,000 --> 00:00:04,000\nHello world\n\n"
+        "2\n00:00:05,000 --> 00:00:08,000\nSecond line\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sys, "argv", ["rusa", "--dry-run", "-s", str(srt), str(video)])
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setattr(
+        rusa.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        rusa.main()
+
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    assert "Dry run plan" in out
+    assert "Hello world" in out
+    assert "Second line" in out
+    assert "Subtitles: 2" in out
+
+
+def test_preview_limits_subtitles(monkeypatch, tmp_path, capsys):
+    """--preview N should generate only first N subtitles."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"fake")
+    srt = tmp_path / "movie.srt"
+    srt.write_text(
+        "1\n00:00:01,000 --> 00:00:04,000\nHello world\n\n"
+        "2\n00:00:05,000 --> 00:00:08,000\nSecond line\n\n"
+        "3\n00:00:09,000 --> 00:00:12,000\nThird line\n",
+        encoding="utf-8",
+    )
+
+    tts_calls: list[tuple] = []
+
+    def fake_generate_tts(entries, voice, threads, tmpdir, backend="edge"):
+        tts_calls.append((len(entries), [e["text"] for e in entries]))
+        return []
+
+    monkeypatch.setattr(sys, "argv", ["rusa", "--preview", "2", "-s", str(srt), str(video)])
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setattr(
+        rusa.subprocess,
+        "run",
+        lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr=""),
+    )
+    monkeypatch.setattr(rusa, "step_generate_tts", fake_generate_tts)
+    monkeypatch.setattr(rusa, "step_convert_wav", lambda *args, **kwargs: [])
+
+    with pytest.raises(SystemExit):
+        rusa.main()
+
+    assert len(tts_calls) == 1
+    assert tts_calls[0][0] == 2
+    assert tts_calls[0][1] == ["Hello world", "Second line"]
+
+
+def test_custom_cmd_requires_explicit_voice(monkeypatch, tmp_path, capsys):
+    """--tts-cmd without --voice must fail early with a clear message."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"fake")
+    custom_script = tmp_path / "bin" / "tts_silero.py"
+    custom_script.parent.mkdir(parents=True)
+    custom_script.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    custom_script.chmod(0o755)
+
+    monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
+    monkeypatch.setattr(sys, "argv", [
+        "rusa",
+        "--tts-cmd", f"{custom_script} {{in}} {{out}} {{voice}}",
+        str(video),
+    ])
+
+    with pytest.raises(SystemExit) as exc:
+        rusa.main()
+
+    assert exc.value.code == rusa.EXIT_USAGE_ERROR
+    assert "--voice" in capsys.readouterr().err
 
 
 def test_step_mix_output_subs_mode_drop_skips_subtitle_mapping(monkeypatch, tmp_path):

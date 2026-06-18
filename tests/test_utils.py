@@ -8,9 +8,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
 import rusa_audio
+import rusa_cli
+import rusa_engines
 import rusa_mux
 import rusa_shared
-import rusa_cli
 import rusa_tts
 
 
@@ -267,11 +268,84 @@ class TestListVoices:
         monkeypatch.setattr(rusa_shared.subprocess, "run", fake_run)
         monkeypatch.setattr(rusa_cli.sys, "exit", lambda code: None)
 
-
-        rusa.list_voices()
+        rusa.list_voices("ru")
         captured = capsys.readouterr()
         ru_lines = [l for l in captured.out.split("\n") if "ru-" in l.lower()]
+        en_lines = [l for l in captured.out.split("\n") if "en-" in l.lower()]
         assert len(ru_lines) >= 2
+        assert len(en_lines) == 0
+
+
+# ── normalize_lang_code ──────────────────────────────────────────────
+
+class TestNormalizeLangCode:
+    def test_normalize_lang_code_fixes_norwegian_alias(self):
+        """norwegian / no / norsk must map to nb, not no."""
+        assert rusa_shared.normalize_lang_code("norwegian") == "nb"
+        assert rusa_shared.normalize_lang_code("no") == "nb"
+        assert rusa_shared.normalize_lang_code("norsk") == "nb"
+
+    def test_normalize_lang_code_keeps_supported_codes(self):
+        assert rusa_shared.normalize_lang_code("ru") == "ru"
+        assert rusa_shared.normalize_lang_code("en") == "en"
+        assert rusa_shared.normalize_lang_code("he") == "he"
+
+    def test_normalize_lang_code_full_names(self):
+        assert rusa_shared.normalize_lang_code("russian") == "ru"
+        assert rusa_shared.normalize_lang_code("english") == "en"
+
+
+# ── External TTS engines ─────────────────────────────────────────────
+
+class TestExternalEngines:
+    def test_built_in_engines_are_registered(self):
+        """Built-in engines (piper, rhvoice, espeak, gtts, festival) should be registered."""
+        for engine_id in ("piper", "rhvoice", "espeak", "gtts", "festival"):
+            assert engine_id in rusa_shared.BACKEND_REGISTRY, f"Engine {engine_id} not registered"
+
+    def test_external_engine_list_voices_uses_static_voices(self):
+        """Piper backend should list voices from config."""
+        piper = rusa_shared.BACKEND_REGISTRY["piper"]
+        voices = piper.list_voices()
+        assert any(v == "ru_RU-dmitri-medium" for v, _ in voices)
+
+    def test_external_engine_validate_voice_warns_on_unknown(self):
+        """validate_voice should warn for unknown voice."""
+        piper = rusa_shared.BACKEND_REGISTRY["piper"]
+        warning = piper.validate_voice("not-a-real-voice")
+        assert warning is not None
+        assert "not-a-real-voice" in warning
+
+    def test_external_engine_generate_formats_cmd(self, monkeypatch, tmp_path):
+        """ExternalTtsBackend.generate should format the command and run the binary."""
+        piper = rusa_shared.BACKEND_REGISTRY["piper"]
+        out = str(tmp_path / "out.wav")
+        text = "hello world"
+        voice = "ru_RU-dmitri-medium"
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            # Simulate output file creation
+            Path(out).write_bytes(b"RIFF" + b"\x00" * 100)
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+        monkeypatch.setattr(rusa_engines.subprocess, "run", fake_run)
+
+        rc = piper.generate(text, voice, out)
+        assert rc == 0
+        assert len(calls) == 1
+        assert "piper" in calls[0]
+        assert "ru_RU-dmitri-medium" in calls[0]
+        assert out in calls[0]
+
+    def test_cli_list_voices_respects_engine_flag(self, monkeypatch, capsys):
+        """--voice --engine piper should list piper voices, not edge voices."""
+        monkeypatch.setattr(rusa_cli.sys, "exit", lambda code: None)
+        rusa.list_voices(engine="piper")
+        captured = capsys.readouterr()
+        assert "piper" in captured.out.lower()
+        assert "ru_RU-dmitri-medium" in captured.out
 
 
 # ── Cache eviction ───────────────────────────────────────────────────

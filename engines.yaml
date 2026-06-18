@@ -1,0 +1,63 @@
+# Built-in declarative TTS engines for rusa.
+# Users can override or add engines in ~/.config/rusa/engines.yaml
+engines:
+  piper:
+    display_name: piper
+    binary: piper
+    output_format: wav
+    default_voice: ru_RU-dmitri-medium
+    static_voices:
+      - ru_RU-dmitri-medium
+      - ru_RU-irina-medium
+      - en_US-lessac-medium
+      - en_US-ryan-medium
+      - de_DE-thorsten-medium
+      - fr_FR-siwis-medium
+    generate_cmd: "piper --model {voice} --output_file {out} --json-input < {in}"
+    voice_parser: static
+
+  rhvoice:
+    display_name: rhvoice
+    binary: RHVoice-test
+    output_format: wav
+    default_voice: elena
+    static_voices:
+      - elena
+      - anna
+      - aleksandr
+    generate_cmd: "RHVoice-test -p {voice} -i {in} -o {out}"
+    voice_parser: static
+
+  espeak:
+    display_name: espeak
+    binary: espeak-ng
+    output_format: wav
+    default_voice: ru
+    list_voices_cmd: "espeak-ng --voices"
+    generate_cmd: "espeak-ng -v {voice} -f {in} -w {out}"
+    voice_parser: espeak
+
+  gtts:
+    display_name: gtts
+    binary: gtts-cli
+    output_format: mp3
+    default_voice: ru
+    static_voices:
+      - ru
+      - en
+      - de
+      - fr
+      - es
+      - it
+    generate_cmd: "gtts-cli --lang {voice} -f {in} -o {out}"
+    voice_parser: static
+
+  festival:
+    display_name: festival
+    binary: text2wave
+    output_format: wav
+    default_voice: default
+    static_voices:
+      - default
+    generate_cmd: "text2wave -o {out} {in}"
+    voice_parser: static

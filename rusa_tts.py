@@ -29,9 +29,10 @@ def _split_text(text: str, max_chars: int = MAX_TTS_CHARS) -> list[str]:
     while len(text) > max_chars:
         chunk = text[:max_chars]
         split_at = -1
-        for match in re.finditer(r"[.!?\u2026]", chunk):
+        # Prefer splitting after sentence-ending punctuation followed by space/end
+        for match in re.finditer(r"[.!?\u2026](\s|$)", chunk):
             split_at = match.end()
-        if split_at == -1:
+        if split_at <= 0:
             split_at = chunk.rfind(" ")
             if split_at == -1:
                 split_at = max_chars

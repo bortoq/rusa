@@ -78,7 +78,9 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--threads N`                | TTS thread count                      | `6`                                |
 | `--cache-stats`              | Show cache statistics and exit        | off                                |
 | `--cache-clear`              | Clear all caches and exit             | off                                |
-| `--no-cache`                 | Disable cache for this run            | off                                |
+| `--no-cache` | Disable cache for this run | off |
+| `--dry-run` | Show generation plan without running TTS or rendering | off |
+| `--preview N` | Generate only the first N subtitles | off |
 | `--version`                  | Show version (1.0.0) and exit         | —                                   |
 | `--aac [BITRATE]`            | AAC codec (128, 192, …)               | off                                |
 | `--mp3 [BITRATE]`            | MP3 codec (128, 192, …)               | off                                |
@@ -87,8 +89,8 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--from N`                   | First subtitle index                  | all                                |
 | `--to N`                     | Last subtitle index                   | all                                |
 | `--audio-only`               | Audio output only (no video)          | off                                |
-| `--tts-backend {edge,rhvoice}`      | TTS backend: edge (cloud) or rhvoice (local) | `edge`                |
-| `--tts-cmd TEMPLATE` | Arbitrary TTS command (`{in}` `{out}` `{voice}`) | —                                |
+| `--engine ENGINE` | TTS engine (edge, piper, rhvoice, espeak, gtts, festival or a custom engine from `~/.config/rusa/engines.yaml`) | `edge` |
+| `--tts-cmd TEMPLATE` | Arbitrary TTS command (`{in}` `{out}` `{voice}`). When used, overrides `--engine` | —                                |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
 
@@ -163,7 +165,45 @@ rusa --tts-cmd '/home/user/bin/tts_silero.py {in} {out} {voice}' --voice baya mo
 
 **Placeholders:** `{in}` = text file, `{out}` = output audio file, `{voice}` = `--voice` value.
 
-**Note:** The command must be in PATH or an absolute path.
+**Note:** The command must be in PATH or an absolute path. When using `--tts-cmd`, `--voice` is mandatory. Use `--lang` to control subtitle search and output track language metadata.
+
+### Built-in engines (`--engine`)
+
+In addition to `edge` (Microsoft Edge TTS), rusa supports local/alternative engines through a single declarative backend:
+
+```bash
+# Piper (local neural TTS)
+rusa --engine piper --voice ru_RU-dmitri-medium movie.mkv
+
+# RHVoice
+rusa --engine rhvoice --voice elena movie.mkv
+
+# espeak-ng
+rusa --engine espeak --voice ru movie.mkv
+
+# Google TTS (gtts-cli)
+rusa --engine gtts --voice ru movie.mkv
+
+# Festival
+rusa --engine festival movie.mkv
+
+# List voices for a specific engine
+rusa --voice --engine piper
+```
+
+Engines are described in the bundled `engines.yaml`. Users can add custom engines in `~/.config/rusa/engines.yaml`:
+
+```yaml
+engines:
+  my_tts:
+    display_name: my_tts
+    binary: my_tts_bin
+    output_format: wav
+    default_voice: default
+    static_voices: [default, alt]
+    generate_cmd: "my_tts_bin --voice {voice} --input {in} --output {out}"
+    voice_parser: static
+```
 
 ---
 
@@ -251,6 +291,10 @@ Timing:
   assemble: 14.0s
   mux: 9.5s
 ```
+
+## Documentation
+- [roadmap](doc/roadmap.md) — refactoring roadmap and status
+- [implementation_plan](doc/implementation_plan.md) — phased implementation plan
 
 ## License
 

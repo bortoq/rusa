@@ -2,7 +2,12 @@
 
 ## doc/
 
-This directory holds design documentation:
+This directory holds design documentation.
 
-- `roadmap.md` — Refactoring roadmap, audit issues, status tracking (managed by Architect)
-- `audit.md` — Audit log and review artifacts (managed by Auditor)
+Русский:
+- `roadmap.md` — рефакторинг, аудит, трекинг статуса
+- `implementation_plan.md` — план поэтапной реализации
+
+English:
+- `roadmap.md` — refactoring roadmap, audit issues, status tracking
+- `implementation_plan.md` — phased implementation plan

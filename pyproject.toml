@@ -15,6 +15,7 @@ dependencies = [
     "edge-tts>=7.0.0",
     "tqdm>=4.60",
     "langdetect>=1.0.9",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -26,4 +27,5 @@ Source = "https://github.com/bortoq/rusa"
 BugTracker = "https://github.com/bortoq/rusa/issues"
 
 [tool.setuptools]
-py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
+py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
+include-package-data = true

@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
               rusa --from 10 --to 50 --audio-only movie.mkv
               rusa --lang he movie.mkv
               rusa --voice he-IL-HilaNeural --lang he movie.mkv
+              rusa --engine piper --voice ru_RU-dmitri-medium movie.mkv
         """
         ),
     )
@@ -108,33 +109,53 @@ def build_parser() -> argparse.ArgumentParser:
             "Пример: --tts-cmd 'espeak-ng -w {out} -f {in} -v {voice}'"
         ),
     )
+    parser.add_argument(
+        "--engine",
+        metavar="ENGINE",
+        default="",
+        help="TTS-движок (edge, piper, rhvoice, espeak, gtts, festival или пользовательский из ~/.config/rusa/engines.yaml). По умолчанию edge.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Показать план генерации (голос, язык, файл, субтитры) без запуска TTS и рендера",
+    )
+    parser.add_argument(
+        "--preview",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Сгенерировать только первые N субтитров (preview-режим)",
+    )
     return parser
 
 
-def list_voices(lang: str | None = None) -> None:
-    """Print available voices from edge-tts."""
-    from rusa_shared import normalize_lang_code
+def list_voices(lang: str | None = None, engine: str | None = None) -> None:
+    """Print available voices for the selected TTS engine."""
+    from rusa_shared import BACKEND_REGISTRY, normalize_lang_code
 
     if lang:
         lang = normalize_lang_code(lang)
 
-    print(f"{CYAN}edge-tts:{NC}")
-    rc = subprocess.run(
-        ["python3", "-m", "edge_tts", "--list-voices"],
-        check=False, capture_output=True, text=True,
-    )
-    if rc.returncode == 0:
-        for line in rc.stdout.split("\n"):
-            line = line.strip()
-            if not line:
+    engine = engine or "edge"
+    backend_cls = BACKEND_REGISTRY.get(engine)
+    if backend_cls is None:
+        print(f"Неизвестный TTS-движок: {engine}")
+        print(f"Доступные: {', '.join(sorted(BACKEND_REGISTRY))}")
+        sys.exit(2)
+
+    display_name = getattr(backend_cls, "_display_name", backend_cls.name)
+    if callable(display_name):
+        display_name = display_name()
+    print(f"{CYAN}{display_name}:{NC}")
+    voices = backend_cls.list_voices()
+    if voices:
+        for voice, voice_lang in voices:
+            voice_name = voice.split(":")[-1].strip() if ":" in voice else voice
+            if lang and not voice_name.lower().startswith(f"{lang}"):
                 continue
-            if lang and f"-{lang}-" not in line.split(":")[-1].strip():
-                continue
-            print(f"  {line}")
+            print(f"  {voice_name}")
     else:
-        print("  (edge-tts не установлен. Установите: pip install edge-tts)")
+        print(f"  (для движка '{engine}' не найдено голосов или бинарий отсутствует в PATH)")
 
     sys.exit(0)
-
-
-

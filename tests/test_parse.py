@@ -87,7 +87,7 @@ def test_parse_multi_line_text():
 
 
 def test_parse_with_formatting():
-    """HTML tags in SRT should be kept as-is (cleaned later if needed)."""
+    """HTML tags in SRT should be stripped during parsing so TTS engines get clean text."""
     content = textwrap.dedent("""\
         1
         00:00:01,000 --> 00:00:04,000
@@ -97,7 +97,27 @@ def test_parse_with_formatting():
     p.write_text(content, encoding="utf-8")
     entries, count = rusa.step_parse_srt(str(p), None, None)
     assert count == 1
-    assert "<i>" in entries[0]["text"] or "Italic" in entries[0]["text"]
+    assert entries[0]["text"] == "Italic text and bold"
+    assert "<i>" not in entries[0]["text"]
+    assert "<b>" not in entries[0]["text"]
+    p.unlink()
+
+
+def test_parse_with_html_escaped_tags():
+    """HTML-escaped tags like &lt;i&gt; should be decoded and stripped."""
+    content = textwrap.dedent("""\
+        1
+        00:00:01,000 --> 00:00:04,000
+        &lt;i&gt;Italic text&lt;/i&gt; and &lt;b&gt;bold&lt;/b&gt;
+    """)
+    p = Path("/tmp/test_escaped_format.srt")
+    p.write_text(content, encoding="utf-8")
+    entries, count = rusa.step_parse_srt(str(p), None, None)
+    assert count == 1
+    assert entries[0]["text"] == "Italic text and bold"
+    assert "<i>" not in entries[0]["text"]
+    assert "<b>" not in entries[0]["text"]
+    assert "&lt;" not in entries[0]["text"]
     p.unlink()
 
 

@@ -298,18 +298,12 @@ def step_mix_output(
     source = norm_out if norm_applied else mixed
 
     if audio_only:
-        if not output:
-            base = os.path.splitext(os.path.basename(video))[0]
-            output = os.path.join(os.path.dirname(video), f"{base}_voiceover{ext}")
         rc = subprocess.run(
             ["ffmpeg", "-y", "-loglevel", "error", "-i", source, "-ac", str(WAV_CHANNELS), "-ar", str(WAV_FRAMERATE), "-c:a", ffmpeg_codec, "-b:a", bitrate_arg, output],
             check=False,
             capture_output=True,
         )
     else:
-        if not output:
-            base = os.path.splitext(os.path.basename(video))[0]
-            output = os.path.join(os.path.dirname(video), f"{base}_dubbed.mkv")
         subtitle_modes, source_subtitle_codec = _subtitle_mux_plan(video, output, subs_mode)
         last_err_text = ""
         for index, subtitle_mode in enumerate(subtitle_modes):
