@@ -59,6 +59,7 @@ def build_args(
         "range_to": range_to,
         "preview": preview,
         # Flags not exposed via WebUI — use defaults
+        "webui": False,
         "cache_stats": False,
         "cache_clear": False,
     }
@@ -70,3 +71,34 @@ def build_args(
         args_dict[audio_fmt] = audio_bitrate
 
     return Namespace(**args_dict)
+
+
+def pick_output_file(default_name: str = "output.mp4") -> str | None:
+    """Open native Save-As dialog via tkinter.
+
+    Returns the chosen absolute path, or *None* if the user cancels
+    or tkinter is not available (headless environment).
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError:
+        return None
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    path: str = filedialog.asksaveasfilename(
+        initialfile=default_name,
+        defaultextension="",
+        filetypes=[
+            ("Video files", "*.mp4 *.mkv *.avi *.mov *.webm"),
+            ("All files", "*.*"),
+        ],
+    )
+    root.destroy()
+
+    if not path:
+        return None
+    return path

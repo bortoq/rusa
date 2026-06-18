@@ -6,6 +6,11 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7860
 DEFAULT_SHARE = False
 
+# ── Output directory ────────────────────────────────────────────────────
+# Where processed files land by default (cross-platform: ~/Downloads/rusa).
+from pathlib import Path
+DEFAULT_OUTPUT_DIR = str(Path.home() / "Downloads" / "rusa")
+
 # ── UI defaults ───────────────────────────────────────────────────────
 DEFAULT_TITLE = "rusa — Закадровый перевод видео"
 DEFAULT_DESCRIPTION = (
@@ -15,10 +20,10 @@ DEFAULT_DESCRIPTION = (
 
 # ── Available audio codecs ────────────────────────────────────────────
 AUDIO_CODECS = {
-    "aac": {"label": "AAC", "default": "128", "bitrates": ["96", "128", "192", "256", "320"]},
+    "aac": {"label": "AAC", "default": "96", "bitrates": ["32", "64", "96", "128", "192", "256", "320"]},
     "mp3": {"label": "MP3", "default": "192", "bitrates": ["128", "192", "256", "320"]},
-    "opus": {"label": "Opus", "default": "64", "bitrates": ["64", "96", "128", "160"]},
-    "ac3": {"label": "AC3", "default": "448", "bitrates": ["384", "448", "640"]},
+    "opus": {"label": "Opus", "default": "64", "bitrates": ["16", "32", "48", "64", "96", "128", "160"]},
+    "ac3": {"label": "AC3", "default": "256", "bitrates": ["192", "256", "384", "448", "640"]},
 }
 
 # ── Volume range ──────────────────────────────────────────────────────

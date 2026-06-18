@@ -19,10 +19,11 @@ from webui.config import (
 def create_video_input() -> gr.File:
     """File upload for input video."""
     return gr.File(
-        label="Видеофайл",
+        label="Выберите видеофайл",
         file_types=[".mkv", ".mp4", ".avi", ".mov", ".webm"],
         file_count="single",
     )
+
 
 
 def create_srt_input() -> gr.File:
@@ -98,6 +99,7 @@ def create_codec_group() -> tuple:
         label="Битрейт",
         choices=AUDIO_CODECS["opus"]["bitrates"],
         value=AUDIO_CODECS["opus"]["default"],
+        allow_custom_value=True,
     )
     return codec_radio, bitrate_dropdown
 

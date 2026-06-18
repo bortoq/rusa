@@ -1,6 +1,8 @@
 """Gradio application for rusa WebUI."""
 from __future__ import annotations
 
+from typing import Generator
+
 import os
 import subprocess
 import sys
@@ -22,7 +24,12 @@ from webui.components import (
     create_voice_input,
     create_volume_sliders,
 )
-from webui.config import DEFAULT_DESCRIPTION, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_SHARE, DEFAULT_TITLE
+from webui.config import DEFAULT_DESCRIPTION, DEFAULT_HOST, DEFAULT_PORT, DEFAULT_SHARE, DEFAULT_TITLE, DEFAULT_OUTPUT_DIR
+
+_WEBUI_CSS = """\
+    footer { display: none !important; }\
+    .gradio-container { max-width: 960px !important; margin: auto !important; }\
+    """
 
 
 def _process_video(
@@ -42,12 +49,11 @@ def _process_video(
     audio_only: bool,
     keep_temp: bool,
     no_cache: bool,
-    progress: gr.Progress = gr.Progress(),
-) -> tuple[str, str | None]:
-    """Run rusa processing (stub for Phase 1, real logic in Phase 2).
+    output_path: str | None = None,
+) -> Generator[tuple[str, str | None], None, None]:
+    """Run rusa processing pipeline.
 
-    Yields status updates via progress bar.
-    Returns (log_text, output_file_path_or_None).
+    Yields (log_text, output_file_path_or_None).
     """
     from webui.config import AUDIO_CODECS
 
@@ -77,7 +83,7 @@ def _process_video(
 
     log_lines: list[str] = []
 
-    def log(msg: str) -> None:
+    def log(msg: str) -> Generator[tuple[str, str | None], None, None]:
         log_lines.append(msg)
         yield "\n".join(log_lines), None
 
@@ -86,7 +92,6 @@ def _process_video(
         return
 
     yield from log(f"▶ Начинаю обработку: {os.path.basename(video_file)}")
-    progress(0.05, desc="Проверка зависимостей...")
 
     from rusa_shared import which
     try:
@@ -114,43 +119,98 @@ def _process_video(
             return
         yield from log("✓ edge-tts — доступен")
 
-    yield from log("")
-    yield from log("✅ Проверка пройдена. Запуск core-функций rusa...")
-    progress(0.1, desc="Запуск обработки...")
 
-    # Phase 2 will replace this with actual rusa.main() call
-    # For Phase 1 — simulate processing steps
-    steps = [
-        ("Извлечение субтитров", 0.2),
-        ("Генерация TTS", 0.5),
-        ("Конвертация WAV", 0.7),
-        ("Сборка voiceover", 0.85),
-        ("Микс + кодирование", 0.95),
-    ]
-    for step_name, step_progress in steps:
-        yield from log(f"  → {step_name}...")
-        progress(step_progress, desc=step_name)
-        time.sleep(0.3)
-        yield from log(f"    ✓ {step_name} завершён")
+    # Phase 2: call real rusa.main()
+    import io
+    import re
+    from contextlib import redirect_stdout, redirect_stderr
 
-    yield from log("")
-    yield from log(f"📁 Выходной файл: (будет определён в Фазе 2)")
-    yield from log("✅ Обработка завершена (заглушка Фазы 1)")
-    progress(1.0, desc="Готово")
+    # Strip ANSI escape sequences for clean log display
+    _re_ansi = re.compile(r"\x1b\[[0-9;]*m")
 
+    def _strip_ansi(text: str) -> str:
+        return _re_ansi.sub("", text)
+
+    stdout_capture = io.StringIO()
+    stderr_capture = io.StringIO()
+
+    def _emit_captured(
+        src: io.StringIO, prefix: str = "",
+    ) -> Generator[tuple[str, str | None], None, None]:
+        text = src.getvalue()
+        if not text.strip():
+            return
+        cleaned = _strip_ansi(text)
+        for line in cleaned.strip().split("\n"):
+            if line:
+                yield from log(f"{prefix}{line}")
+
+    try:
+        from rusa import main as rusa_main
+        with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+            rusa_main(args)
+    except SystemExit as exc:
+        yield from _emit_captured(stdout_capture)
+        yield from _emit_captured(stderr_capture, "⚠ ")
+        yield from log(f"❌ Ошибка обработки (код {exc.code})")
+        return
+    except Exception as exc:
+        yield from _emit_captured(stdout_capture)
+        yield from _emit_captured(stderr_capture, "⚠ ")
+        yield from log(f"❌ Непредвиденная ошибка: {exc}")
+        return
+
+    # Show rusa's captured output in the log
+    yield from _emit_captured(stdout_capture)
+    yield from _emit_captured(stderr_capture, "⚠ ")
+
+    # Copy output file to user-accessible directory
+    src_path = args.output  # set by rusa.main()
+    final_path = None
+    if src_path and os.path.isfile(src_path):
+        import shutil
+        if output_path:
+            # Write directly to the user-chosen path
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+            shutil.copy2(src_path, output_path)
+            final_path = output_path
+        else:
+            from webui.config import DEFAULT_OUTPUT_DIR
+            dest_dir = os.path.expanduser(DEFAULT_OUTPUT_DIR)
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, os.path.basename(src_path))
+            shutil.copy2(src_path, dest)
+            final_path = dest
+
+    if final_path and os.path.isfile(final_path):
+        yield from log("")
+        yield from log("✅ Обработка завершена")
+        yield from log(f"📁 Выходной файл: {final_path}")
+        yield "\n".join(log_lines), final_path
+    else:
+        yield from log("")
+        yield from log(f"⚠ Выходной файл не найден (src={src_path})")
+        yield "\n".join(log_lines), None
     return
 
 
 def create_app() -> gr.Blocks:
     """Build the Gradio Blocks interface."""
-    css = """
-    footer { display: none !important; }
-    .gradio-container { max-width: 960px !important; margin: auto !important; }
-    """
     with gr.Blocks(title=DEFAULT_TITLE) as app:
         gr.Markdown(f"# {DEFAULT_TITLE}")
         gr.Markdown(DEFAULT_DESCRIPTION)
 
+        # ── Output file path picker ───────────────────────────
+        output_file_state = gr.State(value=None)
+        with gr.Row():
+            output_picker_btn = gr.Button("📁 Выходной файл", variant="secondary", scale=1)
+            output_path_display = gr.Textbox(
+                label="Путь сохранения",
+                value="",
+                placeholder="Не выбран (будет использован путь по умолчанию)",
+                interactive=False,
+                scale=4,
+            )
         with gr.Row():
             with gr.Column(scale=1):
                 video_input = create_video_input()
@@ -175,6 +235,8 @@ def create_app() -> gr.Blocks:
             subs_mode_input = create_subs_mode_input()
             sync_check, audio_only_check, keep_temp_check, no_cache_check = create_advanced_checkboxes()
 
+
+
         process_btn = gr.Button("🚀 Запустить обработку", variant="primary", scale=2)
 
         log_output = gr.Textbox(
@@ -184,12 +246,11 @@ def create_app() -> gr.Blocks:
             interactive=False,
         )
 
-        output_file = gr.File(label="Готовый файл", visible=False)
-
         # ── Events ────────────────────────────────────────────────────
         process_btn.click(
             fn=_process_video,
             inputs=[
+                output_file_state,
                 video_input,
                 srt_input,
                 lang_input,
@@ -207,15 +268,16 @@ def create_app() -> gr.Blocks:
                 keep_temp_check,
                 no_cache_check,
             ],
-            outputs=[log_output, output_file],
+            outputs=[log_output, output_path_display],
         )
 
-        # Update bitrate dropdown when codec changes
-        def _update_bitrates(codec_label: str) -> list[str]:
+        # Update bitrate choices AND value when codec changes
+        def _update_bitrates(codec_label: str) -> dict:
             from webui.config import AUDIO_CODECS
             codec_map = {v["label"]: k for k, v in AUDIO_CODECS.items()}
             key = codec_map.get(codec_label, "opus")
-            return AUDIO_CODECS[key]["bitrates"]
+            info = AUDIO_CODECS[key]
+            return gr.update(choices=info["bitrates"], value=info["default"])
 
         codec_radio.change(
             fn=_update_bitrates,
@@ -226,19 +288,50 @@ def create_app() -> gr.Blocks:
     return app
 
 
+def _check_port_available(host: str, port: int) -> None:
+    """Exit with a friendly message if the port is already in use."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    except OSError:
+        print(f"❌ Порт {port} уже занят (возможно, уже запущен другой экземпляр rusa WebUI).")
+        print(f"   Используйте --port для указания другого порта, например: --port {port + 1}")
+        sys.exit(1)
+    finally:
+        sock.close()
+
+
 def main() -> None:
     """Entry point for ``python -m rusa.webui``."""
+    import warnings
+    warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
     import argparse
+    from webui.config import DEFAULT_OUTPUT_DIR
 
     parser = argparse.ArgumentParser(description=DEFAULT_TITLE)
     parser.add_argument("--host", default=DEFAULT_HOST, help="Хост (по умолч. 127.0.0.1)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Порт (по умолч. 7860)")
     parser.add_argument("--share", action="store_true", help="Создать публичную ссылку (share=True)")
     args = parser.parse_args()
+    _check_port_available(args.host, args.port)
 
     app = create_app()
     print(f"🌐 rusa WebUI запущен: http://{args.host}:{args.port}")
-    app.launch(server_name=args.host, server_port=args.port, share=args.share, css=css, theme=gr.themes.Soft())
+    print("Нажмите Ctrl+C для остановки")
+    try:
+        app.launch(server_name=args.host, server_port=args.port, share=args.share, css=_WEBUI_CSS, theme=gr.themes.Soft(), allowed_paths=[os.path.expanduser(DEFAULT_OUTPUT_DIR)])
+    except OSError as exc:
+        msg = str(exc)
+        if "Cannot find empty port" in msg:
+            print(f"❌ Порт {args.port} занят. Используйте --port для указания другого порта, например: --port {args.port + 1}")
+        else:
+            print(f"❌ Ошибка запуска сервера: {exc}")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Сервер остановлен.")
+        # Gradio handles actual cleanup; just notify the user.
 
 
 if __name__ == "__main__":

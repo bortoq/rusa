@@ -7,6 +7,7 @@ Public API: all commonly-used names are re-exported from submodules.
 Tests and external code should access everything through ``rusa.*``.
 """
 
+import argparse
 import os
 import re
 import shutil
@@ -112,14 +113,20 @@ def _print_dry_run(args, backend_cls, voice, target_lang, output, entries):
     sys.exit(0)
 
 
-def main() -> None:
-    args = _get_parser().parse_args(sys.argv[1:])
+def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = _get_parser().parse_args(sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
 
     _save_terminal()
     atexit.register(_restore_terminal)
-    signal.signal(signal.SIGINT, rusa_shared._term_handler)
-    signal.signal(signal.SIGTERM, rusa_shared._term_handler)
+    import threading
+    if threading.current_thread() is threading.main_thread():
+        try:
+            signal.signal(signal.SIGINT, rusa_shared._term_handler)
+            signal.signal(signal.SIGTERM, rusa_shared._term_handler)
+        except (RuntimeError, ValueError):
+            pass
     try:
         if args.voice == "__LIST__":
             list_voices(args.lang, args.engine)
@@ -235,6 +242,7 @@ def main() -> None:
                 os.path.dirname(video),
                 f"{base}_{display_name}_{lang_suffix}{ext}",
             )
+        args.output = output
 
         if os.path.isfile(output):
             warn(f"Выходной файл существует: {output}")

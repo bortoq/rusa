@@ -2,26 +2,27 @@
 
 Usage:
     rusa --webui
-    python -m rusa.webui
+    python -m webui
 """
 from __future__ import annotations
 
 __all__ = ["run", "create_app"]
 
+import os
 import sys
 
 
 def run(host: str = "127.0.0.1", port: int = 7860, share: bool = False) -> None:
     """Launch the rusa WebUI server."""
+    import warnings
+    warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
     import gradio as gr
-    from webui.app import create_app
+    from webui.app import create_app, _WEBUI_CSS
 
-    css = """
-    footer { display: none !important; }
-    .gradio-container { max-width: 960px !important; margin: auto !important; }
-    """
     app = create_app()
-    app.launch(server_name=host, server_port=port, share=share, css=css, theme=gr.themes.Soft())
+    from webui.config import DEFAULT_OUTPUT_DIR
+    app.launch(server_name=host, server_port=port, share=share, css=_WEBUI_CSS, theme=gr.themes.Soft(),
+               allowed_paths=[os.path.expanduser(DEFAULT_OUTPUT_DIR)])
 
 
 def create_app():

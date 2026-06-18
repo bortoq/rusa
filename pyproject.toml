@@ -23,6 +23,7 @@ webui = ["gradio>=4.0"]
 
 [project.scripts]
 rusa = "rusa:main"
+rusa-gui = "rusa_gui:main"
 
 [project.urls]
 Homepage = "https://github.com/bortoq/rusa"
@@ -30,6 +31,6 @@ Source = "https://github.com/bortoq/rusa"
 BugTracker = "https://github.com/bortoq/rusa/issues"
 
 [tool.setuptools]
-py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
+py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts", "rusa_gui"]
 packages = ["webui"]
 include-package-data = true
