@@ -1,9 +1,9 @@
 # rusa — AI Voiceover for Movies
 
-**rusa** is a command-line tool that adds **full voiceover translation** to your video collection in a single command. Point it at a video file — rua extracts subtitles, generates speech using Microsoft Edge TTS neural voices, and mixes it over the original audio.
+**rusa** is a command-line tool that adds **full voiceover translation** to your video collection in a single command. Point it at a video file — rusa extracts subtitles, generates speech using TTS voices, and mixes it over the original audio.
 
 Ideal for:
-- 🎬 **Movies & TV series** — Russian voiceover from existing subtitles
+- 🎬 **Movies & TV series** — voiceover in any language from existing subtitles
 - 🎙️ **Podcasts & lectures** — voiceover translation into any supported language
 
 ```bash
@@ -14,26 +14,30 @@ rusa movie.mkv
 ## Features
 
 - 🎯 **One command** — rusa finds subtitles, generates voiceover, and assembles the final file automatically
-- 🔊 **Natural neural voices** — Microsoft Edge TTS (Svetlana and Dmitry for Russian, 80+ languages supported)
+- 🔊 **Natural voices** — supports 33+ languages via Microsoft Edge TTS; any TTS engine via `--tts-cmd`
 - ✂️ **Smart silence trimming** — leading/trailing silence is removed; speech and inter-phrase pauses stay intact
 - 🧩 **Intelligent assembly** — if entries overlap, rusa shifts them forward instead of clipping words
-- 🌐 **Auto language detection** — rusa picks the right voice from the subtitle content. Supports Russian, English, German, French, Spanish, Italian, Portuguese, Japanese, Korean, Chinese, Arabic, Turkish, Dutch, Polish, Swedish, Danish, Finnish, Norwegian, Czech, Hungarian, Hebrew, and more; other languages via explicit `--voice`
+- 🌐 **Auto language detection** — rusa picks the right voice from the subtitle content or filename (`.ru.srt`, `.en.srt`, etc.)
 - 🎚️ **Adjustable volume** — set original and TTS volume independently (0.0–1.0) to balance background and voiceover
 - 🔄 **Normalization** — loudnorm (fine) or dynaudnorm (fast) for consistent volume across the whole movie
 - 🎧 **Any audio codec** — AAC, MP3, Opus, AC3 — your choice
 - 🧩 **Split-sentence merging** — broken subtitles (e.g. 1ms gap / lowercase continuation) are automatically merged for natural TTS intonation
-- ⚡ **Parallel processing** — MP3→WAV conversion runs in multiple threads
+- ⚡ **Parallel processing** — TTS generation and WAV conversion run in multiple threads
 - ⏱️ **Stage timing summary** — after a successful run, rusa prints elapsed time per stage: subtitles, TTS, WAV, assemble, mux
-- 💾 **Persistent cache** — TTS and WAV results are cached; repeated runs reuse cached data and skip network/ffmpeg calls
-- 🔐 **Terminal state guard** — saves and restores terminal attributes on exit/signal, preventing mc and terminal corruption
+- 💾 **Persistent cache** — TTS and WAV results are cached; repeated runs reuse cached data and skip network/ffmpeg calls. Automatic LRU eviction when cache exceeds 2 GiB
+- 🔐 **Terminal state guard** — saves and restores terminal attributes on exit/signal, preventing corruption
+- 🌐 **WebUI included** — browser-based interface (Gradio) for users who prefer a GUI
+- 🖥️ **Native GUI** — desktop interface (tkinter) for a native experience
 
 ## Quick Start
 
 **Linux / macOS:**
 
 ```bash
-# Install dependencies
-pip install edge-tts tqdm langdetect
+# Install
+pip install rusa
+# or from source:
+# git clone ... && cd rusa && pip install .
 
 # Make sure ffmpeg is installed
 # Linux: apt install ffmpeg   (or brew install ffmpeg on macOS)
@@ -45,8 +49,8 @@ rusa movie.mkv
 **Windows (PowerShell):**
 
 ```powershell
-# Install dependencies
-pip install edge-tts tqdm langdetect
+# Install
+pip install rusa
 
 # Make sure ffmpeg.exe is in your PATH (download from ffmpeg.org)
 
@@ -54,7 +58,7 @@ pip install edge-tts tqdm langdetect
 python rusa.py movie.mkv
 ```
 
-The output file is placed next to the source: `movie_dubbed.mkv`.
+The output file is created next to the source: `movie_edge_ru.mkv`.
 
 Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 `langdetect` is optional — it improves auto-detection from `.srt` content.
@@ -64,9 +68,9 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | Flag                         | Description                           | Default                             |
 | ---------------------------- | ------------------------------------- | ----------------------------------- |
 | `video`                      | Video file (.mkv, .mp4, .avi, …)      | required                            |
-| `-o, --output FILE`          | Output file                           | `<video>_dubbed.mkv`                |
+| `-o, --output FILE`          | Output file                           | `<video>_{backend}_{lang}.{ext}`     |
 | `-s, --srt FILE`             | External subtitle file (.srt)         | extracted from video / found nearby |
-| `--voice VOICE`              | edge-tts voice name                   | auto-detected from subtitle language |
+| `--voice VOICE`              | TTS voice name; no arg = list voices  | auto-detected from subtitle language |
 | `--lang LANG`                | Subtitle ISO 639-1 code (ru, en, he, de, fr, …) | from --voice / auto |
 | `--speed SPEED`              | TTS speech speed                      | `1.5`                              |
 | `--orig-vol VOL`             | Original audio volume (0.0–1.0)       | `0.65`                             |
@@ -78,10 +82,10 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--threads N`                | TTS thread count                      | `6`                                |
 | `--cache-stats`              | Show cache statistics and exit        | off                                |
 | `--cache-clear`              | Clear all caches and exit             | off                                |
-| `--no-cache` | Disable cache for this run | off |
-| `--dry-run` | Show generation plan without running TTS or rendering | off |
-| `--preview N` | Generate only the first N subtitles | off |
-| `--version`                  | Show version (1.0.0) and exit         | —                                   |
+| `--no-cache`                 | Disable cache for this run            | off                                |
+| `--dry-run`                  | Show generation plan without running  | off                                |
+| `--preview N`                | Generate only the first N subtitles   | off                                |
+| `--version`                  | Show version and exit                 | —                                   |
 | `--aac [BITRATE]`            | AAC codec (128, 192, …)               | off                                |
 | `--mp3 [BITRATE]`            | MP3 codec (128, 192, …)               | off                                |
 | `--opus [BITRATE]`           | Opus codec (64, 96, …)                | on (64k default)                   |
@@ -89,10 +93,11 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--from N`                   | First subtitle index                  | all                                |
 | `--to N`                     | Last subtitle index                   | all                                |
 | `--audio-only`               | Audio output only (no video)          | off                                |
-| `--engine ENGINE` | TTS engine (edge, piper, rhvoice, espeak, gtts, festival or a custom engine from `~/.config/rusa/engines.yaml`) | `edge` |
-| `--tts-cmd TEMPLATE` | Arbitrary TTS command (`{in}` `{out}` `{voice}`). When used, overrides `--engine` | —                                |
+| `--engine ENGINE`            | TTS engine (edge, piper, rhvoice, espeak, gtts, festival or custom from `~/.config/rusa/engines.yaml`) | `edge` |
+| `--tts-cmd TEMPLATE`         | Custom TTS command (`{in}` `{out}` `{voice}`). Overrides `--engine` | — |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
+| `--webui`                    | Launch WebUI (Gradio interface)       | off                                |
 
 ## Examples
 
@@ -100,7 +105,7 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 # Basic usage
 rusa movie.mkv
 
-# Male voice + speed
+# Male voice + speed up
 rusa --voice ru-RU-DmitryNeural --speed 1.8 movie.mkv
 
 # Hebrew subtitles + Hila voice (auto-detect)
@@ -118,16 +123,63 @@ rusa --aac 192 --normalize fine --audio-only movie.mkv
 # Subtitle range + MP3
 rusa --from 1 --to 30 --mp3 128 movie.mkv
 
+# Preview first 10 subtitles (dry run)
+rusa --preview 10 --dry-run movie.mkv
+
 # Disable sentence merging
 rusa --no-merge-sentences movie.mkv
+
+# Subtitle mode: convert to compatible format
+rusa --subs-mode convert movie.mkv
 
 # Cache management
 rusa --cache-stats
 rusa --cache-clear
 
+# One-shot run without cache
+rusa --no-cache movie.mkv
+
 # List available voices
 rusa --voice
+
+# External subtitles + sync + Opus 96kbps
+rusa -s subs.srt --sync --opus 96 movie.mkv
+
+# Dry-run mode (show plan without executing)
+rusa --dry-run movie.mkv
+
+# Launch WebUI
+rusa --webui
 ```
+
+## Languages and Voice Quality
+
+rusa is **not** a TTS engine. Voice quality and language support depend entirely on the TTS model you choose.
+
+### Recommendations
+
+For the best results, we recommend:
+
+| Use Case                        | Recommended TTS                    | How to use                |
+|--------------------------------|------------------------------------|---------------------------|
+| Maximum quality                | Chatterbox, XTTS v2, Fish Speech   | `--tts-cmd`               |
+| Good quality + simplicity      | Microsoft Edge TTS (default)       | `--lang`                  |
+| High speed                     | Piper, Kokoro                      | `--tts-cmd`               |
+| Rare languages                 | Modern open-source models          | `--tts-cmd`               |
+
+See detailed recommendations in:
+
+**[doc/LANGUAGE_RECOMMENDATIONS.md](doc/LANGUAGE_RECOMMENDATIONS.md)**
+
+### Using a Custom TTS
+
+rusa allows you to connect **any** TTS system:
+
+```bash
+rusa movie.mkv --tts-cmd "python my_tts.py {in} {out} {voice}"
+```
+
+This gives you maximum flexibility and access to the latest models.
 
 ## Voices
 
@@ -138,7 +190,7 @@ Current Russian Microsoft Edge TTS voices:
 | `ru-RU-SvetlanaNeural` | Female, neural (default)      |
 | `ru-RU-DmitryNeural`   | Male, neural                  |
 
-**80+ languages** are supported — from English and German to Japanese and Hebrew. Full list: `rusa --voice`.
+**33+ languages** are supported. Full list: `rusa --voice`.
 
 Language is auto-detected: subtitle filename pattern (`.ru.srt`, `.en.srt`, …) or content analysis via `langdetect`.
 
@@ -205,7 +257,18 @@ engines:
     voice_parser: static
 ```
 
----
+### Language auto-detection priority
+
+1. Explicit `--voice` (if specified)
+2. Subtitle filename extension: `movie.ru.srt` → `ru-RU-SvetlanaNeural`
+3. Content analysis via `langdetect` (if installed)
+4. If nothing works — rusa will exit and ask for an explicit `--voice`
+
+### `--lang` and explicit voice
+
+- `--lang he` means: find Hebrew subtitles and, if the language is supported by rusa's voice map, pick a voice automatically.
+- If the language is not in the auto-voice map, rusa will exit with a clear message asking for `--voice`.
+- The combination `--lang xx --voice some-VoiceNeural` is valid: `--lang` controls subtitle search and output track metadata, `--voice` controls the actual TTS voice.
 
 ## How It Works
 
@@ -216,7 +279,46 @@ engines:
 5. **Assembly** — each segment written at its timestamp; overlapping segments are cascaded forward (never clipped)
 6. **Mux** — original audio + voiceover are mixed into the output file; subtitle handling controlled by `--subs-mode`
 
+### `--subs-mode` Details
+
+The `--subs-mode` flag controls how rusa handles subtitles in the output video.
+It does not affect `--audio-only` mode.
+
+- `--subs-mode auto` (default) — smart behavior: rusa tries `copy → convert → drop`, but may skip a step if preflight checks show it's impossible for the target container.
+- `--subs-mode copy` — copy original subtitles as-is. If the target container doesn't support the subtitle codec, rusa exits with an error and suggests `--subs-mode convert` or `--subs-mode drop`.
+- `--subs-mode convert` — always re-encode subtitles to a compatible text format. For `.mkv`, rusa uses `srt`.
+- `--subs-mode drop` — do not add subtitles to the output file.
+
+Examples:
+
+```bash
+# Default: smart copy -> convert -> drop
+rusa --subs-mode auto movie.mkv
+
+# Force copy
+rusa --subs-mode copy movie.mp4
+
+# Always convert
+rusa --subs-mode convert movie.mkv
+
+# Strip subtitles
+rusa --subs-mode drop movie.mkv
+```
+
 ### Assembly Algorithm
+
+The voiceover assembly works on a **cascade shift** principle:
+
+1. **Silence trimming** — each WAV file has its leading and trailing silence removed
+   using the `areverse` trick: `silenceremove=start_periods=1` → `areverse` →
+   `silenceremove=start_periods=1` → `areverse`. This reliably separates silence from speech.
+2. **Precise insertion** — each segment is written at its subtitle timestamp (`start_ms`).
+3. **Cascade shift** — if the previous segment hasn't finished yet, the next segment is **shifted forward**.
+4. **No gap?** — the segment is inserted exactly on time.
+
+**Segments are never truncated at end_ms** — they always play in full.
+
+Pseudo-code:
 
 ```
 cur_frame = 0
@@ -227,22 +329,82 @@ for each segment in sorted(segments):
     cur_frame = target + segment.duration_in_frames
 ```
 
-Segments are **never** truncated at `end_ms` — they always play in full.
+Example: if subtitle A takes 1800ms after speed+trim and subtitle B starts at 1500ms:
+
+```
+A: |———— speech (1800ms) ————|
+B:               |———— speech ————|
+                  ↑ B should go here (1500ms), but A isn't done
+                  ↓ B gets shifted
+A: |———— speech (1800ms) ————|
+B:                         |———— speech ————|
+                            B starts at 1800ms, not 1500ms
+```
+
+B is heard with a delay but **fully**, without clipping words.
+
+## WebUI (Gradio Interface)
+
+rusa includes a browser-based WebUI built with Gradio. To launch it:
+
+```bash
+rusa --webui
+# or
+python -m webui
+```
+
+The WebUI opens at `http://127.0.0.1:7860` and provides:
+
+- Video file upload (.mkv, .mp4, .avi, .mov, .webm)
+- Optional SRT subtitle file upload
+- Language and voice selection
+- Custom TTS command input
+- Speed, volume, codec, and normalization controls
+- Subtitle mode selection (auto/copy/convert/drop)
+- Real-time log output during processing
+- Downloadable result file
+
+### Native GUI (tkinter)
+
+A desktop GUI is also available:
+
+```bash
+python rusa_gui.py
+```
+
+It provides the same controls in a native tkinter window with a notebook interface (Basic, Audio, Subtitles tabs).
 
 ## Caching
 
 - **TTS cache**: MP3 files from edge-tts are cached by `voice + text`. Repeated runs skip network calls.
 - **WAV cache**: WAV files after `atempo + silenceremove` are cached by content hash + speed + filter version. Repeated runs skip ffmpeg.
 - Default location: `~/.cache/rusa/{tts,wav}`
-- Override via `RUSA_CACHE_DIR`
-- Max cache size: `RUSA_CACHE_MAX_SIZE` (bytes, default 2 GiB, min 1 MiB)
+- Override via `RUSA_CACHE_DIR` environment variable
+- Max cache size: `RUSA_CACHE_MAX_SIZE` (bytes, default 2 GiB, min 1 MiB) — LRU eviction deletes oldest files when exceeded
+- If cache root is not writable, rusa works without persistent cache
 
 Management:
-```
+
+```bash
 rusa --cache-stats     # show size and entry count
 rusa --cache-clear     # delete all cached files
 rusa --no-cache        # disable cache for one run
 ```
+
+## Timing Summary
+
+After a successful build, rusa prints stage timing:
+
+```text
+Timing:
+  subtitles: 2.1s
+  tts: 401.3s
+  wav: 60.8s
+  assemble: 14.0s
+  mux: 9.5s
+```
+
+This is useful for practical optimization: you can see where time is spent and whether cache, thread count, or container/codec changes make a difference.
 
 ## Exit Codes
 
@@ -250,9 +412,9 @@ rusa --no-cache        # disable cache for one run
 | ---- | --------------------------------- |
 | 0    | Success                           |
 | 1    | Runtime error                     |
-| 2    | Usage error (invalid args)        |
+| 2    | Usage error (invalid arguments)   |
 | 3    | Missing dependency (ffmpeg, etc.) |
-| 4    | Subtitle error                    |
+| 4    | Subtitle error (not found, empty, broken) |
 | 5    | Codec / encoder error             |
 
 ## Environment Variables
@@ -265,35 +427,42 @@ rusa --no-cache        # disable cache for one run
 ## Tests
 
 Offline run (no network, no live TTS):
+
 ```bash
 pytest -q -m 'not slow and not live_tts'
 ```
 
-Full suite (requires edge-tts network access):
+Live smoke run (requires edge-tts network access):
+
+```bash
+pytest -q -m 'live_tts and not slow'
+```
+
+Full suite:
+
 ```bash
 pytest -q
 ```
 
-Regenerate test fixtures:
-```bash
-python3 tests/generate_fixtures.py
-```
+Important:
 
-## Timing Summary
+- `tests/generate_fixtures.py` generates local offline fixtures using ffmpeg and doesn't require network.
+- Live TTS tests are marked with `live_tts`; slow end-to-end tests are marked with `slow`.
+- If `edge-tts` is not available, live tests are automatically skipped.
+- To regenerate fixtures: `python3 tests/generate_fixtures.py`
 
-After a successful build, rusa prints stage timing:
+## Diagnostics
 
-```
-Timing:
-  subtitles: 2.1s
-  tts: 401.3s
-  wav: 60.8s
-  assemble: 14.0s
-  mux: 9.5s
-```
+### Subtitle codec error
+
+If you see: `Subtitle codec mov_text ... is not supported`:
+
+- In `--subs-mode auto`, rusa first tries to copy subtitles, then switches to a compatible text format, then drops subtitles if needed. If preflight knows `copy` is impossible, that step is skipped.
+- In `--subs-mode copy`, rusa exits with an error early (no hidden fallback).
+- In `--subs-mode convert`, rusa directly muxes a compatible text format (SRT for `.mkv`).
 
 ## Documentation
-- [roadmap](doc/roadmap.md) — refactoring roadmap and status
+- [roadmap](doc/roadmap.md) — development roadmap and status
 - [implementation_plan](doc/implementation_plan.md) — phased implementation plan
 
 ## License

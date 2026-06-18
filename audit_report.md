@@ -258,7 +258,7 @@ if cached_dir and os.path.isdir(cached_dir):
 
 **Рекомендация:** удалить строку и добавить пример `--tts-cmd` для RHVoice.
 
-### 6.2. README.md (русский) не содержит `--tts-backend`
+### 6.2. README.en.md (English) не содержит `--tts-backend`
 
 Это правильно, но в английском README остался хвост.
 
@@ -266,13 +266,13 @@ if cached_dir and os.path.isdir(cached_dir):
 
 README заявляет поддержку 20+ языков, но не все ISO-коды действительно имеют встроенный голос. См. раздел 5.2.
 
-### 6.4. `roadmap.md` и `implementation_plan.md` противоречат `doc/README.md`
+### 6.4. `roadmap.md` и `implementation_plan.md` противоречат `doc/README.en.md`
 
-`doc/README.md` говорит, что `roadmap.md` и `implementation_plan.md` должны лежать в `doc/`, но в реальности они остаются в корне. В `roadmap.md` пункт 16 отмечен как выполненный, но файлы не перенесены. Это не влияет на функциональность, но нарушает собственный контракт проекта.
+`doc/README.en.md` говорит, что `roadmap.md` и `implementation_plan.md` должны лежать в `doc/`, но в реальности они остаются в корне. В `roadmap.md` пункт 16 отмечен как выполненный, но файлы не перенесены. Это не влияет на функциональность, но нарушает собственный контракт проекта.
 
 ### 6.5. Контракт "README первичен" — в целом соблюдается
 
-Большинство флагов CLI и поведение описаны в README. Однако `README.en.md` отстаёт от `README.md`.
+Большинство флагов CLI и поведение описаны в README. Однако `README.en.md` отстаёт от `README.en.md`.
 
 ---
 
@@ -386,7 +386,7 @@ python-version: ["3.8", "3.11"]
 10. Удалить мёртвый код `if not output` в `step_mix_output`.
 11. Кэшировать результат `EdgeTtsBackend.validate_voice`.
 12. Добавить `--overwrite` / предупреждение о перезаписи выходного файла.
-13. Перенести `roadmap.md` и `implementation_plan.md` в `doc/` или обновить `doc/README.md`.
+13. Перенести `roadmap.md` и `implementation_plan.md` в `doc/` или обновить `doc/README.en.md`.
 
 ### Низкий приоритет
 
@@ -446,7 +446,7 @@ python-version: ["3.8", "3.11"]
 
 ### 12.5. Обновлена документация
 
-16. **Добавлено предупреждение** в `README.md` и `README.en.md` о том, что `--tts-cmd` требует `--voice`, а `--lang` управляет поиском субтитров и метаданными.
+16. **Добавлено предупреждение** в `README.en.md` и `README.en.md` о том, что `--tts-cmd` требует `--voice`, а `--lang` управляет поиском субтитров и метаданными.
 
 ### 12.6. Результаты тестов после исправлений
 

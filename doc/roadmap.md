@@ -2,157 +2,157 @@
 
 ## Status
 
-### Уже сделано (Phase 1 + Phase 2 + Phase 3)
+### Completed (Phase 1 + Phase 2 + Phase 3)
 
 - [x] `--subs-mode` (`auto`/`copy`/`convert`/`drop`) + preflight subtitle/container strategy
-- [x] Устойчивый mux fallback для несовместимых subtitle codecs
+- [x] Robust mux fallback for incompatible subtitle codecs
 - [x] Parallel WAV conversion (`MP3 → WAV` в несколько потоков)
 - [x] WAV cache (`tts_mp3_hash + speed + filter_version`)
 - [x] Cache management CLI (`--cache-stats`, `--cache-clear`, `--no-cache`)
-- [x] Timing summary / profiling (печать времени по этапам после сборки)
-- [x] Module split: монолит `rusa.py` разделён на 8 модулей
-- [x] Assembly streaming (один write pass, без переоткрытия файла, WAV header пишется в конце)
-- [x] Error UX: стабильные exit-коды (`EXIT_RUNTIME_ERROR`, `EXIT_USAGE_ERROR`, `EXIT_DEPENDENCY_ERROR`, `EXIT_SUBTITLE_ERROR`, `EXIT_CODEC_ERROR`)
-- [x] Тэсты: offline/live маркеры (`slow`, `live_tts`)
-- [x] 81 тест → 122 теста, все проходят
-- [x] Unified `--voice` (фильтрация по `--lang`)
+- [x] Timing summary / profiling (prints stage timing after assembly)
+- [x] Module split: monolithic `rusa.py` split into 8 modules
+- [x] Assembly streaming (single write pass, no file reopen, WAV header written at the end)
+- [x] Error UX: stable exit codes (`EXIT_RUNTIME_ERROR`, `EXIT_USAGE_ERROR`, `EXIT_DEPENDENCY_ERROR`, `EXIT_SUBTITLE_ERROR`, `EXIT_CODEC_ERROR`)
+- [x] Tests: offline/live markers (`slow`, `live_tts`)
+- [x] 81 tests → 122 tests, all passing
+- [x] Unified `--voice` (filtering by `--lang`)
 - [x] TTS Backend Abstraction — `BACKEND_REGISTRY`, `TtsBackend`, `EdgeTtsBackend`, `CustomCmdBackend`
-- [x] `--tts-cmd` — произвольная TTS-команда (`{in}` `{out}` `{voice}`)
-- [x] `_{backend}_{lang}` вместо `_dubbed` в имени выходного файла
+- [x] `--tts-cmd` — custom TTS command (`{in}` `{out}` `{voice}`)
+- [x] `_{backend}_{lang}` replaces `_dubbed` in output filename
 
 ---
 
 ## Priorities
 
-### ✅ 1. Исправить латентный crash при отсутствии `langdetect`
+### ✅ 1. Fix latent crash when `langdetect` is missing
 
 - Priority: **critical**
 - Cost: low
 - Risk: low
 
-**Проблема:** `rusa_subtitle.py` делает `from rusa_shared import LangDetectException, detect`. Если `langdetect` не установлен, эти имена не определены в `rusa_shared` → `ImportError` при старте.
+**Problem:** `rusa_subtitle.py` делает `from rusa_shared import LangDetectException, detect`. Если `langdetect` не установлен, эти имена не определены в `rusa_shared` → `ImportError` при старте.
 
-**Решение:**
+**Solution:**
 - Вариант A: обернуть импорт в `try/except ImportError` в `rusa_subtitle.py`
 - Вариант B: определить заглушки `LangDetectException = Exception` и `detect = None` в `rusa_shared` при отсутствии `langdetect`
 
-**Проверка:** `python3 -c "from rusa_subtitle import detect_language_from_srt"` без `langdetect` в окружении.
+**Check:** `python3 -c "from rusa_subtitle import detect_language_from_srt"` без `langdetect` в окружении.
 
 ---
 
-### ✅ 2. Убрать мёртвый код и неиспользуемые импорты
+### ✅ 2. Remove dead code and unused imports
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-#### 2a. Мёртвые импорты в `rusa_shared.py`
+#### 2a. Dead imports in `rusa_shared.py`
 - `import textwrap` (строка 10) — не используется
 - `import wave` (строка 12) — не используется
 - `from pathlib import Path` (строка 13) — не используется
 
-#### 2b. Мёртвая фикстура `tmp_wav` в `conftest.py`
+#### 2b. Dead fixture `tmp_wav` in `conftest.py`
 - Определена на строках 67–73, ни один тест не использует
 
-#### 2c. Неиспользуемые импорты в `conftest.py`
+#### 2c. Unused imports in `conftest.py`
 - `import json` — не используется
 - `import tempfile` — используется только мёртвой `tmp_wav`
 
-#### 2d. `import textwrap` в конце файла `conftest.py`
+#### 2d. `import textwrap` at end of `conftest.py`
 - Строка 173, расположен после использования в фикстурах. Перенести в начало.
 
 ---
 
-### ✅ 3. Убрать пустой фасад `rusa_cache.py`
+### ✅ 3. Remove empty facade `rusa_cache.py`
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-**Проблема:** `rusa_cache.py` (38 строк) — pass-through фасад, который только реэкспортирует функции из `rusa_shared`. Не добавляет ценности.
+**Problem:** `rusa_cache.py` (38 строк) — pass-through фасад, который только реэкспортирует функции из `rusa_shared`. Не добавляет ценности.
 
-**Решение:**
+**Solution:**
 - Удалить `rusa_cache.py`
 - В `rusa.py` импортировать `_tts_cache_path`, `_wav_cache_path` напрямую из `rusa_shared`
 - Обновить `__all__` в `rusa_shared`, если нужен публичный API
 
 ---
 
-### ✅ 4. Заменить `from rusa_shared import *` на явные импорты
+### ✅ 4. Replace `from rusa_shared import *` with explicit imports
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa.py`, строка 23
+**File:** `rusa.py`, строка 23
 
-Wildcard import вытягивает всё, включая `_CACHE_DISABLED`, `HAS_TQDM`, `HAS_LANGDETECT`.
+Wildcard import pulls everything, включая `_CACHE_DISABLED`, `HAS_TQDM`, `HAS_LANGDETECT`.
 
-**Решение:** Перечислить только нужные имена.
+**Solution:** Перечислить только нужные имена.
 
 ---
 
-### ✅ 5. Заменить `__import__()` на обычные import
+### ✅ 5. Replace `__import__()` with regular imports
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-**Файлы:**
+**Files:**
 - `rusa.py` строка 197: `__import__("shutil").rmtree(...)`
 - `rusa_tts.py` строки 28, 58, 127: `__import__("re").finditer(...)`, `__import__("shutil").copy2(...)`
 
-**Решение:** Перенести `import re`, `import shutil` в начало файлов.
+**Solution:** Перенести `import re`, `import shutil` в начало файлов.
 
 ---
 
-### ✅ 6. Закэшировать `_check_ffmpeg_codec()`
+### ✅ 6. Cache `_check_ffmpeg_codec()`
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa_mux.py`, строки 30–34
+**File:** `rusa_mux.py`, строки 30–34
 
-Каждый вызов запускает `ffmpeg -hide_banner -encoders`. При выборе кодеков вызывается до 4 раз.
+Each call runs `ffmpeg -hide_banner -encoders`. Up to 4 calls when selecting codecs.
 
-**Решение:** Использовать `functools.lru_cache(maxsize=1)`.
+**Solution:** Использовать `functools.lru_cache(maxsize=1)`.
 
 ---
 
-### ✅ 7. Добавить поддержку `.rus.srt` и `.russian.srt` в детекцию языка
+### ✅ 7. Add `.rus.srt` and `.russian.srt` support to language detection
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa_subtitle.py`, строка 27
+**File:** `rusa_subtitle.py`, строка 27
 
 ```python
 match = re.match(r".*\.([a-z]{2})\.srt$", name)
 ```
 
-Регекс ловит только 2-буквенные коды (`.ru.srt`), но не `.rus.srt` (3 буквы).
+Regex matches only 2-letter codes (`.ru.srt`), not `.rus.srt` (3 letters).
 
-**Решение:** Расширить до `r".*\.([a-z]{2,7})\.srt$"` и добавить маппинг: `rus → ru`, `russian → ru`, `english → en`, `hebrew → he` и т.д.
+**Solution:** Расширить до `r".*\.([a-z]{2,7})\.srt$"` и добавить маппинг: `rus → ru`, `russian → ru`, `english → en`, `hebrew → he` и т.д.
 
 ---
 
-### ✅ 8. Добавить `--version` в CLI
+### ✅ 8. Add `--version` to CLI
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файлы:** `rusa_cli.py`, `pyproject.toml`
+**Files:** `rusa_cli.py`, `pyproject.toml`
 
-Версия `1.0.0` есть в `pyproject.toml`, но CLI не отдаёт её.
+Version `1.0.0` exists in `pyproject.toml`, but CLI doesn't expose it.
 
-**Решение:** `parser.add_argument("--version", action="version", version="rusa 1.0.0")`
+**Solution:** `parser.add_argument("--version", action="version", version="rusa 1.0.0")`
 
 ---
 
-### ✅ 9. Исправить legacy build-backend в `pyproject.toml`
+### ✅ 9. Fix legacy build-backend in `pyproject.toml`
 
 - Priority: **medium**
 - Cost: low
@@ -169,19 +169,19 @@ build-backend = "setuptools.build_meta"
 
 ---
 
-### ✅ 10. TypedDict для Entry вместо `dict`
+### ✅ 10. TypedDict for Entry instead of `dict`
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa_subtitle.py`, строка 22
+**File:** `rusa_subtitle.py`, строка 22
 
 ```python
 Entry = dict  # {"idx": int, "start_ms": int, "end_ms": int, "text": str}
 ```
 
-**Решение:** Заменить на `TypedDict`:
+**Solution:** Заменить на `TypedDict`:
 
 ```python
 from typing import TypedDict
@@ -194,43 +194,43 @@ class Entry(TypedDict):
 
 ---
 
-### ✅ 11. Устранить дублирование `make_sine_wav`
+### ✅ 11. Eliminate `make_sine_wav` duplication
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файлы:** `conftest.py` (строки 75–97) и `test_assembly.py` (строки 8–29)
+**Files:** `conftest.py` (строки 75–97) и `test_assembly.py` (строки 8–29)
 
-Две идентичные копии функции.
+Two identical copies of the function.
 
-**Решение:** Удалить из `test_assembly.py`, все импорты перенаправить на `conftest.make_sine_wav`. Или вынести в отдельный helper-модуль.
+**Solution:** Удалить из `test_assembly.py`, все импорты перенаправить на `conftest.make_sine_wav`. Или вынести в отдельный helper-модуль.
 
 ---
 
-### ✅ 12. Добавить `__all__` во все модули
+### ✅ 12. Add `__all__` to all modules
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файлы:** Все `.py` модули (кроме `rusa_cache.py`, который будет удалён).
+**Files:** Все `.py` модули (кроме `rusa_cache.py`, который будет удалён).
 
-`from rusa_shared import *` сейчас вытягивает приватные переменные.
+`from rusa_shared import *` currently pulls private variables.
 
-**Решение:** В каждом модуле определить `__all__` с явным списком публичных имён.
+**Solution:** В каждом модуле определить `__all__` с явным списком публичных имён.
 
 ---
 
-### ✅ 13. Добавить LRU-eviction для кэша
+### ✅ 13. Add LRU eviction for cache
 
 - Priority: **low**
 - Cost: medium
 - Risk: low
 
-**Файл:** `rusa_shared.py` (cache helpers)
+**File:** `rusa_shared.py` (cache helpers)
 
-Сейчас кэш только растёт. Нужна автоматическая очистка при превышении лимита.
+Currently cache only grows. Need automatic cleanup when size exceeds limit.
 
 **Возможные решения:**
 - `RUSA_CACHE_MAX_SIZE` переменная окружения (по умолч. 2GB)
@@ -239,39 +239,39 @@ class Entry(TypedDict):
 
 ---
 
-### ✅ 14. Добавить unit-тесты на `_run_loudnorm`, `_run_dynaudnorm`, `_check_ffmpeg_codec`, `list_voices`, `shell`, `which`, `die`
+### ✅ 14. Add unit tests for `_run_loudnorm`, `_run_dynaudnorm`, `_check_ffmpeg_codec`, `list_voices`, `shell`, `which`, `die`
 
 - Priority: **low**
 - Cost: medium
 - Risk: low
 
-**Файлы:** `tests/`
+**Files:** `tests/`
 
-Сейчас эти функции покрыты только косвенно (через регрессионные тесты). Прямые unit-тесты с fake-subprocess повысят надёжность при рефакторинге.
+Currently these functions are only covered indirectly (via regression tests). Прямые unit-тесты с fake-subprocess повысят надёжность при рефакторинге.
 
 ---
 
-### ✅ 15. Исправить fallback `_get_codec()` при неизвестном кодеке
+### ✅ 15. Fix `_get_codec()` fallback for unknown codec
 
 - Priority: **low**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa_mux.py`, строка 24–27
+**File:** `rusa_mux.py`, строка 24–27
 
-Если кодек не найден в `CODEC_MAP`, возвращается `("libopus", "64k", ".opus")` вне зависимости от запроса.
+If codec not found in `CODEC_MAP`, returns `("libopus", "64k", ".opus")` вне зависимости от запроса.
 
-**Решение:** Лучше вернуть `None` и дать понятную ошибку на стороне вызова, либо выкинуть `KeyError` с внятным сообщением.
+**Solution:** Лучше вернуть `None` и дать понятную ошибку на стороне вызова, либо выкинуть `KeyError` с внятным сообщением.
 
 ---
 
-### ✅ 16. Перенести документацию в `doc/`
+### ✅ 16. Move documentation to `doc/`
 
 - Priority: **low**
 - Cost: low
 - Risk: low
 
-**Текущая структура:**
+**Current structure:**
 ```
 /rusa/
   roadmap.md          ← здесь
@@ -279,7 +279,7 @@ class Entry(TypedDict):
   README.md
 ```
 
-**Цель:**
+**Target:**
 ```
 /rusa/
   doc/
@@ -288,16 +288,16 @@ class Entry(TypedDict):
   README.md
 ```
 
-**Решение:**
+**Solution:**
 - Создать `doc/`
 - Перенести `roadmap.md` → `doc/roadmap.md`
 - Перенести `implementation_plan.md` → `doc/implementation_plan.md`
-- В корневом `README.md` добавить секцию со ссылками: `См. doc/roadmap.md и doc/implementation_plan.md`
+- Add a section in root `README.md` with links: `See doc/roadmap.md and doc/implementation_plan.md`
 - Удалить исходные файлы из корня
 
 ---
 
-### ✅ 17. Добавить `.gitignore` для артефактов сборки и дистрибуции
+### ✅ 17. Add `.gitignore` for build artifacts и дистрибуции
 
 - Priority: **low**
 - Cost: low
@@ -313,28 +313,28 @@ build/
 
 ---
 
-### ✅ 18. CustomCmdBackend + удаление RHVoice + удаление --tts-backend
+### ✅ 18. CustomCmdBackend + remove RHVoice + remove --tts-backend
 
-- `--tts-cmd` — произвольная TTS-команда с плейсхолдерами `{in}` `{out}` `{voice}`
+- `--tts-cmd` — custom TTS command с плейсхолдерами `{in}` `{out}` `{voice}`
 - `CustomCmdBackend` — класс для пользовательских TTS-движков
-- RHVoice удалён из встроенных бэкендов (доступен через `--tts-cmd`)
-- `--tts-backend` удалён (единственный встроенный бэкенд — edge)
+- RHVoice removed from built-in backends (available via `--tts-cmd`)
+- `--tts-backend` removed (only built-in backend is edge)
 
 ---
 
-### ✅ 19. TTS Backend Abstraction + суффикс файла
+### ✅ 19. TTS Backend Abstraction + file suffix
 
-- Введён базовый класс `TtsBackend` с методами `is_available()`, `list_voices()`, `get_default_voice()`, `lang_from_voice()`, `validate_voice()`, `generate()`
-- `BACKEND_REGISTRY` — регистрация бэкендов по имени
-- `EdgeTtsBackend` и `RhvoiceBackend` — конкретные реализации
-- `rusa.py` не содержит `if backend == "rhvoice"` — всё через registry
-- Суффикс выходного файла: `_{backend}_{lang}` (например, `_edge_ru`)
+- Introduced base class `TtsBackend` с методами `is_available()`, `list_voices()`, `get_default_voice()`, `lang_from_voice()`, `validate_voice()`, `generate()`
+- `BACKEND_REGISTRY` — backend registration by name
+- `EdgeTtsBackend` — concrete implementation
+- `rusa.py` has no `if backend == "rhvoice"` — all via registry
+- Output filename suffix: `_{backend}_{lang}` (например, `_edge_ru`)
 
-- `--tts-backend rhvoice` — RHVoice через subprocess
-- Унифицированный `--voice` показывает голоса всех установленных бэкэндов
-- Фильтрация по `--lang` для показа голосов
-- Кэш разделён по бэкэнду
-- 122 теста, все проходят
+- (removed)
+- Unified `--voice` shows voices from all installed backends
+- Filtering by `--lang` for voice display
+- Cache separated by backend
+- 122 tests, all passing
 
 ---
 
@@ -349,125 +349,125 @@ build/
 
 ---
 
-## Audit 2026-06-18 — Полный аудит проекта
+## Audit 2026-06-18 — Full Project Audit
 
-**Статус:** APPROVED ✅. 129 офлайн-тестов + 4 live-теста, все проходят.
+**Status:** APPROVED ✅. 129 offline tests + 4 live tests, all passing.
 
-### Уже сделано (предыдущим аудитором)
+### Completed (by previous auditor)
 
-- [x] `shlex.quote` для плейсхолдеров `{in}` `{out}` `{voice}` в `CustomCmdBackend.generate` — защита от shell-инъекций
-- [x] `_sanitize_filename_part()` для `lang_suffix` в `CustomCmdBackend` — безопасные имена файлов
-- [x] `voiceover_lang = "und"` для `--tts-cmd` без `--lang` — валидные ISO-коды в метаданных
-- [x] Языковые алиасы: `norwegian` → `nb`, `norsk` → `nb`, `no` → `nb`
-- [x] `__all__` во всех модулях (8/8)
-- [x] `lru_cache` для `_check_ffmpeg_codec` — устранение множественных вызовов `ffmpeg -encoders`
-- [x] `_get_codec` возвращает `None` вместо opus-fallback при неизвестном кодеке
-- [x] Регекс детекции языка: `[a-z]{2,7}` + маппинг `rus→ru`, `russian→ru`, `english→en`, `hebrew→he`
-- [x] `make_sine_wav` вынесена в `conftest.py`, удалено дублирование из `test_assembly.py`
-- [x] `import textwrap` перенесён в начало `conftest.py`
-- [x] Мёртвый код `if not output` удалён из `step_mix_output`
-- [x] `_split_text` улучшен: разбиение после `[.!?…](\s|$)` вместо любого знака
-- [x] `list_voices` фильтр исправлен: `startswith(f"{lang}-")` вместо `"-{lang}-" not in`
-- [x] Тест `test_voice_resolution_with_external_srt` исправлен (не зависит от `langdetect`)
-- [x] `README.en.md` — удалён флаг `--tts-backend`
+- [x] `shlex.quote` for `{in}` `{out}` `{voice}` placeholders in `CustomCmdBackend.generate` — shell injection protection
+- [x] `_sanitize_filename_part()` for `lang_suffix` in `CustomCmdBackend` — safe filenames
+- [x] `voiceover_lang = "und"` for `--tts-cmd` without `--lang` — valid ISO codes in metadata
+- [x] Language aliases: `norwegian` → `nb`, `norsk` → `nb`, `no` → `nb`
+- [x] `__all__` in all modules (8/8)
+- [x] `lru_cache` for `_check_ffmpeg_codec` — eliminate duplicate `ffmpeg -encoders` calls
+- [x] `_get_codec` returns `None` instead of opus-fallback for unknown codecs
+- [x] Language detection regex: `[a-z]{2,7}` + mapping `rus→ru`, `russian→ru`, `english→en`, `hebrew→he`
+- [x] `make_sine_wav` moved to `conftest.py`, deduplicated from `test_assembly.py`
+- [x] `import textwrap` moved to top of `conftest.py`
+- [x] Dead code `if not output` removed from `step_mix_output`
+- [x] `_split_text` improved: split after `[.!?…](\s|$)` instead of any character
+- [x] `list_voices` filter fixed: `startswith(f"{lang}-")` instead of `"-{lang}-" not in`
+- [x] Test `test_voice_resolution_with_external_srt` fixed (no longer depends on `langdetect`)
+- [x] `README.en.md` — removed `--tts-backend` flag
 
-### Priorities (новые)
+### New Priorities
 
-#### ✅ 20. Удалить дублирующиеся roadmap.md и implementation_plan.md из корня
+#### ✅ 20. Remove duplicate roadmap.md and implementation_plan.md from root
 
 - Priority: **high**
 - Cost: low
 - Risk: low
 
-**Проблема:** `roadmap.md` и `implementation_plan.md` лежат и в корне, и в `doc/`. Это дублирование, нарушающее roadmap #16.
+**Problem:** `roadmap.md` и `implementation_plan.md` лежат и в корне, и в `doc/`. Это дублирование, нарушающее roadmap #16.
 
-**Решение:** Удалить root-копии. Каноничные файлы — `doc/roadmap.md` и `doc/implementation_plan.md`.
+**Solution:** Удалить root-копии. Каноничные файлы — `doc/roadmap.md` и `doc/implementation_plan.md`.
 
 ---
 
-#### ✅ 21. Добавить предупреждение о перезаписи выходного файла
+#### ✅ 21. Add overwrite warning for output file
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa.py`, `main()`
+**File:** `rusa.py`, `main()`
 
-**Проблема:** `rusa` перезаписывает выходной файл с `-y` ffmpeg без предупреждения.
+**Problem:** `rusa` перезаписывает выходной файл с `-y` ffmpeg без предупреждения.
 
-**Решение:** Перед запуском ffmpeg проверять, существует ли `output`; если да — выводить предупреждение и спрашивать подтверждение (или просто предупреждать, если не `--yes`/`--overwrite`).
+**Solution:** Перед запуском ffmpeg проверять, существует ли `output`; если да — выводить предупреждение и спрашивать подтверждение (или просто предупреждать, если не `--yes`/`--overwrite`).
 
 ---
 
-#### ✅ 22. Расширить `LANG_VOICE_MAP` для неподдерживаемых языков
+#### ✅ 22. Expand `LANG_VOICE_MAP` for unsupported languages
 
 - Priority: **medium**
 - Cost: low
 - Risk: low
 
-**Файл:** `rusa_shared.py`
+**File:** `rusa_shared.py`
 
-**Проблема:** Алиасы `ukrainian`, `hindi`, `indonesian`, `thai`, `vietnamese`, `greek`, `romanian`, `croatian`, `serbian`, `bulgarian`, `malay`, `slovak` ведут на ISO-коды, отсутствующие в `LANG_VOICE_MAP`, что вызывает ошибку "Язык не поддерживается".
+**Problem:** Алиасы `ukrainian`, `hindi`, `indonesian`, `thai`, `vietnamese`, `greek`, `romanian`, `croatian`, `serbian`, `bulgarian`, `malay`, `slovak` ведут на ISO-коды, отсутствующие в `LANG_VOICE_MAP`, что вызывает ошибку "Язык не поддерживается".
 
-**Решение:** Добавить соответствующие голоса Edge TTS для этих языков. Если голос неизвестен — убрать алиас или выдавать понятное сообщение.
+**Solution:** Добавить соответствующие голоса Edge TTS для этих языков. Если голос неизвестен — убрать алиас или выдавать понятное сообщение.
 
 ---
 
-#### 23. Рассмотреть полный отказ от `shell=True` в `CustomCmdBackend`
+#### 23. Consider removing `shell=True` from `CustomCmdBackend`
 
 - Priority: **low**
 - Cost: medium
 - Risk: medium
 
-**Файл:** `rusa_shared.py`, `CustomCmdBackend.generate`
+**File:** `rusa_shared.py`, `CustomCmdBackend.generate`
 
-**Проблема:** `shlex.quote` снижает риск shell-инъекций, но не устраняет его полностью. `shell=True` позволяет пайпы и редиректы в шаблоне пользователя, что удобно, но опасно.
+**Problem:** `shlex.quote` снижает риск shell-инъекций, но не устраняет его полностью. `shell=True` позволяет пайпы и редиректы в шаблоне пользователя, что удобно, но опасно.
 
-**Решение:** 
-- Вариант A: оставить `shell=True` + `shlex.quote` (текущий)
-- Вариант B: разбирать шаблон на список аргументов, запускать с `shell=False` (безопаснее, но ломает пайпы)
-- Вариант C: документировать риски и рекомендовать не использовать шаблоны с пайпами
-
----
-
-## Remaining Items (из предыдущего аудита)
-
-Эти пункты зафиксированы в `audit_report.md` и остаются актуальными для будущих итераций:
-
-1. Добавить встроенные голоса Edge TTS для языков: uk, hi, id, th, vi, el, ro, hr, sr, bg, ms, sk
-2. Добавить `--overwrite` / предупреждение о перезаписи выходного файла
-3. Рассмотреть отказ от `shell=True` в `CustomCmdBackend`
-4. Кэшировать результат `EdgeTtsBackend.validate_voice` (сейчас вызывает `--list-voices` каждый раз)
-5. Унифицировать `cache_bucket_stats` (рекурсивный) и `_evict_oldest` (один уровень)
-6. Вынести логику `print_cache_stats`/`clear_cache` отдельно от `sys.exit`
-
-
+**Solution:** 
+- Option A: keep `shell=True` + `shlex.quote` (current)
+- Option B: parse template into argument list, run with `shell=False` (safer, but breaks pipes)
+- Option C: document risks and recommend against pipe-based templates
 
 ---
 
-## 24. WebUI — Пользовательский интерфейс (Gradio)
+## Remaining Items (from previous audit)
+
+These items are recorded in `audit_report.md` and remain relevant for future iterations:
+
+1. Add built-in Edge TTS voices for: uk, hi, id, th, vi, el, ro, hr, sr, bg, ms, sk
+2. Add `--overwrite` / output file overwrite warning
+3. Consider removing `shell=True` from `CustomCmdBackend`
+4. Cache `EdgeTtsBackend.validate_voice` result (currently calls `--list-voices` every time)
+5. Unify `cache_bucket_stats` (recursive) and `_evict_oldest` (single level)
+6. Separate `print_cache_stats`/`clear_cache` logic from `sys.exit`
+
+
+
+---
+
+## 24. WebUI — User Interface (Gradio)
 
 - Priority: **medium**
-- Статус: **планирование**
-- Сложность: 15–19 человеко-дней
-- Риск: средний
+- Status: **completed**
+- Difficulty: 15–19 person-days
+- Risk: medium
 
-### Обоснование
+### Rationale
 
-Добавление WebUI сделает rusa доступной для пользователей без опыта работы с командной строкой,
-а также упростит визуальный мониторинг прогресса обработки видео.
+Adding a WebUI makes rusa accessible to users without command-line experience,
+and simplifies visual monitoring of video processing progress.
 
-### Выбор фреймворка: Gradio ✅
+### Framework Choice: Gradio ✅
 
-| Критерий | Gradio | Streamlit | FastAPI+HTMX | NiceGUI |
+| Criterion | Gradio | Streamlit | FastAPI+HTMX | NiceGUI |
 |---|---|---|---|---|
-| Скорость разработки | ★★★★★ | ★★★★ | ★★ | ★★★★ |
-| Интеграция с кодом | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
-| Прогресс и файлы | ★★★★★ | ★★★★ | ★★★ | ★★★ |
-| Простота деплоя | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
-| TTS/ML-сообщество | ★★★★★ | ★★★★★ | ★★★★ | ★★★ |
+| Dev speed | ★★★★★ | ★★★★ | ★★ | ★★★★ |
+| Code integration | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
+| Progress & files | ★★★★★ | ★★★★ | ★★★ | ★★★ |
+| Ease of deploy | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
+| TTS/ML community | ★★★★★ | ★★★★★ | ★★★★ | ★★★ |
 
-### Архитектура
+### Architecture
 
 ```
 rusa/
@@ -482,66 +482,66 @@ rusa/
 └── pyproject.toml
 ```
 
-**Принцип:** WebUI вызывает существующие функции rusa, не дублируя логику.
+**Principle:** WebUI calls existing rusa functions without duplicating logic.
 
-### Фазы реализации
+### Implementation Phases
 
-#### Фаза 1: Подготовка и архитектура (3–4 дня)
+#### Phase 1: Preparation and Architecture (3–4 days)
 
-- [ ] Создать `webui/` пакет с модулями
-- [ ] Добавить `gradio>=4.0` в `pyproject.toml` (опциональная зависимость)
-- [ ] Создать `webui/app.py` — точка входа Gradio
-- [ ] CLI-флаг `--webui` для запуска интерфейса
+- [x] Create `webui/` package with modules
+- [x] Add `gradio>=4.0` to `pyproject.toml` (optional dependency)
+- [x] Create `webui/app.py` — Gradio entry point
+- [x] CLI flag `--webui` to launch the interface
 
-#### Фаза 2: Базовый интерфейс (5–6 дней)
+#### Phase 2: Basic Interface (5–6 days)
 
-- [ ] Загрузка видео и SRT (`gr.File`)
-- [ ] Выбор языка и голоса (`gr.Dropdown`)
-- [ ] Поле `--tts-cmd` с примерами (`gr.Textbox`)
-- [ ] Настройки: громкость, скорость, кодек (`gr.Slider`)
-- [ ] Запуск обработки с прогресс-баром (`gr.Button` + `gr.Progress`)
+- [x] Video and SRT upload (`gr.File`)
+- [x] Language and voice selection (`gr.Dropdown`)
+- [x] `--tts-cmd` field with examples (`gr.Textbox`)
+- [x] Settings: volume, speed, codec (`gr.Slider`)
+- [x] Process button with progress bar (`gr.Button` + `gr.Progress`)
 
-#### Фаза 3: Продвинутые функции (4–5 дней)
+#### Phase 3: Advanced Features (4–5 days)
 
-- [ ] Логи и этапы обработки в реальном времени
-- [ ] Предпросмотр и скачивание результата
-- [ ] История обработанных файлов
-- [ ] Поддержка batch-обработки
+- [x] Real-time log and processing stage output
+- [x] Result preview and download
+- [ ] Processing history
+- [ ] Batch processing support
 
-#### Фаза 4: Полировка и интеграция (3–4 дня)
+#### Phase 4: Polish and Integration (3–4 days)
 
-- [ ] Docker-образ с WebUI
-- [ ] Документация по запуску
-- [ ] Тестирование на Linux/macOS/Windows
-- [ ] Обновление README
+- [ ] Docker image with WebUI
+- [ ] Launch documentation
+- [ ] Linux/macOS/Windows testing
+- [x] README update
 
-### MVP-фичи (первая версия)
+### MVP Features (first release)
 
-Обязательно:
-- Загрузка видео + SRT
-- Выбор языка / голоса
-- `--tts-cmd` с примерами
-- Прогресс-бар с этапами
-- Скачивание результата
-- Логи в реальном времени
+Required:
+- Video + SRT upload
+- Language/voice selection
+- `--tts-cmd` with examples
+- Progress bar with stages
+- Download result
+- Real-time logs
 
-Опционально (позже):
-- Сохранение пресетов
-- Batch-режим
-- Тёмная тема
+Optional (later):
+- Preset saving
+- Batch mode
+- Dark theme
 
-### Потенциальные проблемы
+### Potential Issues
 
-| Проблема | Решение |
+| Issue | Solution |
 |----------|---------|
-| Выделение памяти при long-running задачах | Использовать очереди / бэкграунд-воркеры |
-| Два интерфейса (CLI + WebUI) нужно поддерживать | WebUI только вызывает core-функции, не дублирует |
-| Прогресс-бар при многопоточном TTS | Публиковать обновления через `gr.Progress()` с колбэками |
-| Зависимость от `gradio` увеличивает размер пакета | Сделать `gradio` extra-dep (`pip install rusa[webui]`) |
+| Memory allocation in long-running tasks | Use queues / background workers |
+| Two interfaces (CLI + WebUI) to maintain | WebUI only calls core functions, doesn't duplicate |
+| Progress bar with multi-threaded TTS | Publish updates via `gr.Progress()` with callbacks |
+| Gradio dependency increases package size | Make `gradio` an extra dep (`pip install rusa[webui]`) |
 
 
 ## Notes
 
-- После каждого изменения — полный прогон тестов: `PYTHONDONTWRITEBYTECODE=1 pytest -q tests/`
-- Офлайн-прогон: `PYTHONDONTWRITEBYTECODE=1 pytest -q -m 'not slow and not live_tts' tests/`
-- Фикстуры генерируются автоматически; принудительно: `python3 tests/generate_fixtures.py`
+- After each change — run full test suite: `PYTHONDONTWRITEBYTECODE=1 pytest -q tests/`
+- Offline run: `PYTHONDONTWRITEBYTECODE=1 pytest -q -m 'not slow and not live_tts' tests/`
+- Fixtures generated automatically; force regeneration: `python3 tests/generate_fixtures.py`

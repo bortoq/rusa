@@ -38,7 +38,7 @@ Phase 1 is the first implementation target. Phase 2 and Phase 3 should be execut
   - add cache management CLI
   - add timing summary
   - add stable exit code mapping
-- Modify: `README.md`
+- Modify: `README.en.md`
   - document new CLI, cache controls, timing summary, and subtitle behavior
 - Modify: `tests/test_cli_regressions.py`
   - add CLI regressions for `--subs-mode`, cache commands, and errors
@@ -72,7 +72,7 @@ Phase 1 is the first implementation target. Phase 2 and Phase 3 should be execut
 **Files:**
 - Modify: `rusa.py`
 - Modify: `tests/test_cli_regressions.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -115,7 +115,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rusa.py README.md tests/test_cli_regressions.py
+git add rusa.py README.en.md tests/test_cli_regressions.py
 git commit -m "Add subtitle mode controls"
 ```
 
@@ -124,7 +124,7 @@ git commit -m "Add subtitle mode controls"
 **Files:**
 - Modify: `rusa.py`
 - Create: `tests/test_wav_cache.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -164,7 +164,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rusa.py README.md tests/test_wav_cache.py
+git add rusa.py README.en.md tests/test_wav_cache.py
 git commit -m "Add persistent WAV cache"
 ```
 
@@ -173,7 +173,7 @@ git commit -m "Add persistent WAV cache"
 **Files:**
 - Modify: `rusa.py`
 - Create: `tests/test_cache_cli.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -213,7 +213,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rusa.py README.md tests/test_cache_cli.py
+git add rusa.py README.en.md tests/test_cache_cli.py
 git commit -m "Add cache management flags"
 ```
 
@@ -222,7 +222,7 @@ git commit -m "Add cache management flags"
 **Files:**
 - Modify: `rusa.py`
 - Modify: `tests/test_regression.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -255,7 +255,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rusa.py README.md tests/test_regression.py
+git add rusa.py README.en.md tests/test_regression.py
 git commit -m "Add timing summary output"
 ```
 
@@ -264,7 +264,7 @@ git commit -m "Add timing summary output"
 **Files:**
 - Modify: `tests/conftest.py`
 - Modify: `tests/test_regression.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -296,7 +296,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/conftest.py tests/test_regression.py README.md
+git add tests/conftest.py tests/test_regression.py README.en.md
 git commit -m "Clarify offline and live test modes"
 ```
 
@@ -305,7 +305,7 @@ git commit -m "Clarify offline and live test modes"
 **Files:**
 - Modify: `rusa.py`
 - Modify: `tests/test_cli_regressions.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -337,7 +337,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add rusa.py README.md tests/test_cli_regressions.py
+git add rusa.py README.en.md tests/test_cli_regressions.py
 git commit -m "Stabilize CLI exit codes and errors"
 ```
 
@@ -377,7 +377,7 @@ git commit -m "Split rusa monolith into focused modules"
 **Files:**
 - Modify: assembly implementation after Phase 2 split
 - Create: `tests/test_assembly_streaming.py`
-- Modify: `README.md`
+- Modify: `README.en.md`
 
 - [ ] **Step 1: Write failing regression tests for large-file assembly behavior**
 - [ ] **Step 2: Implement chunked or streaming assembly path**
