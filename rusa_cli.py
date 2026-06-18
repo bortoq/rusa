@@ -128,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Сгенерировать только первые N субтитров (preview-режим)",
     )
+    parser.add_argument(
+        "--webui",
+        action="store_true",
+        help="Запустить WebUI (Gradio) вместо CLI",
+    )
     return parser
 
 
