@@ -1,13 +1,14 @@
 """Tests for rusa_gui.py — native tkinter GUI.
 
-All tests in this file require tkinter (python3-tk).
-They are skipped if tkinter is not available.
+All tests in this file require a display (tkinter window).
+They are skipped on headless CI.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import tkinter as tk
 from pathlib import Path
 
 import pytest
@@ -17,15 +18,27 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 
-# No module-level importorskip — each class handles its own skip.
-# The tests need RusaGUI from rusa_gui, which imports tkinter at module level.
-# We use a fixture/class-level skip instead.
+def _display_available() -> bool:
+    """Return True if tkinter can create a window (display available)."""
+    try:
+        root = tk.Tk()
+        root.destroy()
+        return True
+    except tk.TclError:
+        return False
+
+
+_HAS_DISPLAY = _display_available()
+pytestmark = pytest.mark.skipif(
+    not _HAS_DISPLAY,
+    reason="No display available (headless CI)",
+)
+
 
 class TestGUICreation:
     """The main window must create without errors."""
 
     def test_window_created(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         gui = RusaGUI()
@@ -38,7 +51,6 @@ class TestGUICreation:
                 gui.root.destroy()
 
     def test_window_title(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         gui = RusaGUI()
@@ -54,7 +66,6 @@ class TestFileSelection:
 
     @pytest.fixture
     def gui(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         g = RusaGUI()
@@ -67,12 +78,10 @@ class TestFileSelection:
         assert len(btns) >= 1
 
     def test_video_clear_button(self, gui):
-        import tkinter as tk
         btns = self._find_buttons(gui, "✕")
         assert len(btns) >= 1
 
     def test_output_save_button(self, gui):
-        import tkinter as tk
         btns = self._find_buttons(gui, "Сохранить")
         assert len(btns) >= 1
 
@@ -95,7 +104,6 @@ class TestFileSelection:
     @staticmethod
     def _find_buttons(gui, text):
         """Find all ttk.Button widgets with matching text."""
-        import tkinter as tk
         from tkinter import ttk
 
         found = []
@@ -117,7 +125,6 @@ class TestProcessingButton:
 
     @pytest.fixture
     def gui(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         g = RusaGUI()
@@ -144,7 +151,6 @@ class TestLogWidget:
 
     @pytest.fixture
     def gui(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         g = RusaGUI()
@@ -153,7 +159,6 @@ class TestLogWidget:
             g.root.destroy()
 
     def test_log_text_exists(self, gui):
-        import tkinter as tk
         assert isinstance(gui.log_text, tk.Text)
 
     def test_log_append(self, gui):
@@ -173,7 +178,6 @@ class TestDefaultValues:
 
     @pytest.fixture
     def gui(self):
-        pytest.importorskip("tkinter")
         from rusa_gui import RusaGUI
 
         g = RusaGUI()
