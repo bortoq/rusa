@@ -234,6 +234,18 @@ class TestCLIIntegration:
 # ── Output File Picker (tkinter helper) ──────────────────────────────
 
 
+def _display_available() -> bool:
+    """Check if tkinter can create windows (display available)."""
+    import tkinter as tk
+    try:
+        root = tk.Tk()
+        root.destroy()
+        return True
+    except tk.TclError:
+        return False
+
+
+@pytest.mark.skipif(not _display_available(), reason="No display available")
 class TestOutputFilePicker:
     """webui/utils.py pick_output_file() — tkinter dialog helper."""
 
