@@ -474,7 +474,8 @@ If you see: `Subtitle codec mov_text ... is not supported`:
 
 ## Documentation
 - [roadmap](doc/roadmap.md) — development roadmap and status
-- [implementation_plan](doc/implementation_plan.md) — phased implementation plan
+- [implementation_plan](doc/implementation_plan.md) — implementation plan (all phases complete)
+- [TTS recommendations](doc/LANGUAGE_RECOMMENDATIONS.md) — voice quality by language
 
 ## License
 

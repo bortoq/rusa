@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "rusa"
 version = "1.0.0"
 description = "Russian Voiceover for Movies — создаёт голосовой закадровый перевод по субтитрам"
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [
