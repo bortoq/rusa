@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 pytest.importorskip("fastapi")
 from fastapi import FastAPI
-from starlette.testclient import TestClient
+
+try:
+    from starlette.testclient import TestClient
+except (ImportError, RuntimeError):
+    TestClient = None  # starlette misses httpx/httpx2
 
 PROJECT_DIR = Path(__file__).parent.parent
 
@@ -38,12 +42,12 @@ def client(app: FastAPI) -> TestClient:
     on older versions.  The import is inside the fixture so that the
     module can be collected on Python 3.9 (where httpx2 is unavailable).
     """
+    if TestClient is None:
+        pytest.skip("starlette.testclient not available (need httpx/httpx2)")
     try:
         return TestClient(app)
     except RuntimeError as exc:
-        if "httpx2" in str(exc):
-            pytest.skip("TestClient requires httpx2")
-        raise
+        pytest.skip(f"TestClient unavailable: {exc}")
 
 
 @pytest.fixture
