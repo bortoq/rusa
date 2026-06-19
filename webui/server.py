@@ -46,10 +46,10 @@ def _sse_event(event_type: str, message: str, **extra: Any) -> str:
 
 
 def _process_video(
-    video_file: str | None,
-    srt_file: str | None,
-    lang: str | None,
-    voice: str | None,
+    video_file: Optional[str],
+    srt_file: Optional[str],
+    lang: Optional[str],
+    voice: Optional[str],
     tts_cmd: str,
     speed: float,
     orig_vol: float,
@@ -169,7 +169,7 @@ def _process_video(
 
     # Copy output file to user-accessible directory
     src_path = getattr(args, "output", None)
-    final_path: str | None = None
+    final_path: Optional[str] = None
     if src_path and os.path.isfile(src_path):
         dest_dir = os.path.expanduser(DEFAULT_OUTPUT_DIR)
         os.makedirs(dest_dir, exist_ok=True)
@@ -221,15 +221,15 @@ def create_app() -> FastAPI:
     async def process_video(
         video: UploadFile = File(...),
         srt: Optional[UploadFile] = File(None),
-        lang: str | None = Form(None),
-        voice: str | None = Form(None),
+        lang: Optional[str] = Form(None),
+        voice: Optional[str] = Form(None),
         tts_cmd: str = Form(""),
         speed: float = Form(1.5),
         orig_vol: float = Form(0.65),
         tts_vol: float = Form(0.93),
         codec: str = Form("Opus"),
         bitrate: str = Form("64"),
-        normalize: str | None = Form(None),
+        normalize: Optional[str] = Form(None),
         subs_mode: str = Form("auto"),
         sync: bool = Form(False),
         audio_only: bool = Form(False),
@@ -247,7 +247,7 @@ def create_app() -> FastAPI:
         with open(video_path, "wb") as f:
             f.write(content)
 
-        srt_path: str | None = None
+        srt_path: Optional[str] = None
         if srt and srt.filename:
             srt_path = os.path.join(tmpdir, srt.filename or "subtitles.srt")
             srt_content = await srt.read()
