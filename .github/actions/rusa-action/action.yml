@@ -1,0 +1,102 @@
+name: "rusa Voiceover"
+description: "Generate voiceover translation for a video using rusa"
+author: "rusa contributors"
+
+branding:
+  icon: "mic"
+  color: "purple"
+
+inputs:
+  video:
+    description: "Path to video file (.mkv, .mp4, .avi, etc.)"
+    required: true
+  srt:
+    description: "Path to external subtitle file (.srt)"
+    required: false
+    default: ""
+  lang:
+    description: "Subtitle language ISO 639-1 code (ru, en, he, de, fr, ...)"
+    required: false
+    default: ""
+  voice:
+    description: "TTS voice name (e.g. ru-RU-SvetlanaNeural)"
+    required: false
+    default: ""
+  tts_cmd:
+    description: "Custom TTS command template with {in} {out} {voice}"
+    required: false
+    default: ""
+  engine:
+    description: "TTS engine (edge, piper, espeak, rhvoice, gtts, festival)"
+    required: false
+    default: "edge"
+  speed:
+    description: "TTS speech speed (e.g. 1.5)"
+    required: false
+    default: "1.5"
+  output:
+    description: "Output file path"
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends ffmpeg
+      shell: bash
+
+    - name: Install rusa
+      run: |
+        pip install rusa[webui] edge-tts tqdm langdetect
+      shell: bash
+
+    - name: Run rusa
+      run: |
+        ARGS=""
+
+        if [ -n "${{ inputs.srt }}" ]; then
+          ARGS="$ARGS -s ${{ inputs.srt }}"
+        fi
+
+        if [ -n "${{ inputs.lang }}" ]; then
+          ARGS="$ARGS --lang ${{ inputs.lang }}"
+        fi
+
+        if [ -n "${{ inputs.voice }}" ]; then
+          ARGS="$ARGS --voice ${{ inputs.voice }}"
+        fi
+
+        if [ -n "${{ inputs.tts_cmd }}" ]; then
+          ARGS="$ARGS --tts-cmd '${{ inputs.tts_cmd }}'"
+        fi
+
+        if [ -n "${{ inputs.engine }}" ] && [ "${{ inputs.engine }}" != "edge" ]; then
+          ARGS="$ARGS --engine ${{ inputs.engine }}"
+        fi
+
+        if [ -n "${{ inputs.speed }}" ]; then
+          ARGS="$ARGS --speed ${{ inputs.speed }}"
+        fi
+
+        if [ -n "${{ inputs.output }}" ]; then
+          ARGS="$ARGS -o ${{ inputs.output }}"
+        fi
+
+        echo "::group::rusa output"
+        rusa $ARGS ${{ inputs.video }}
+        echo "::endgroup::"
+      shell: bash
+
+    - name: Upload output artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: voiceover-output
+        path: |
+          ${{ inputs.output || '*.mkv' }}
+          ${{ inputs.output || '*.mp4' }}
+          ${{ inputs.output || '*.wav' }}
+          ${{ inputs.output || '*.mp3' }}
+        if-no-files-found: warn

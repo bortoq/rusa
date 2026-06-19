@@ -129,6 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Сгенерировать только первые N субтитров (preview-режим)",
     )
     parser.add_argument(
+        "--preset",
+        choices=["youtube", "tiktok", "podcast", "cinema"],
+        default=None,
+        help="Готовый пресет качества: youtube, tiktok, podcast, cinema. Переопределяет --aac/--mp3/--opus/--ac3, --normalize, --speed, --orig-vol, --audio-only. Можно комбинировать с явными флагами (явные флаги имеют приоритет).",
+    )
+    parser.add_argument(
         "--webui",
         action="store_true",
         help="Запустить API сервер вместо CLI",

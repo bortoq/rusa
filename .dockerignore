@@ -1,0 +1,37 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Build artifacts
+dist/
+build/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests and docs (not needed in runtime image)
+tests/
+doc/
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# CI
+.github/
+.opencode/

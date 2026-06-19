@@ -1,0 +1,48 @@
+# Example workflow: generate voiceover for videos in a repository
+#
+# Trigger: manual workflow_dispatch
+# Can be adapted for push/pr triggers by setting `on: [push]`
+
+name: "Voiceover"
+
+on:
+  workflow_dispatch:
+    inputs:
+      video:
+        description: "Video file path"
+        required: true
+        type: string
+      srt:
+        description: "Subtitle file path (optional)"
+        required: false
+        type: string
+      lang:
+        description: "Language code (ru, en, he, ...)"
+        required: false
+        type: string
+      voice:
+        description: "TTS voice"
+        required: false
+        type: string
+
+jobs:
+  voiceover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6h GitHub limit
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate voiceover
+        uses: ./.github/actions/rusa-action
+        with:
+          video: ${{ inputs.video }}
+          srt: ${{ inputs.srt || '' }}
+          lang: ${{ inputs.lang || '' }}
+          voice: ${{ inputs.voice || '' }}
+
+      - name: Download result
+        run: |
+          echo "Voiceover output is available as an artifact on this run page."
+          echo "Look for the 'voiceover-output' artifact above."

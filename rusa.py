@@ -70,6 +70,98 @@ from rusa_shared import (          # noqa: F401 — re-exported as public API
 from rusa_subtitle import detect_language_from_srt, step_extract_subtitles, step_merge_srt_entries, step_parse_srt, step_sync_alass
 from rusa_tts import _split_text, step_generate_tts
 
+# ── Quality presets ───────────────────────────────────────────────────
+# Each preset sets flags that can be overridden by explicit CLI args.
+# Semantics: if the user explicitly passed a flag, it wins over the preset.
+PRESET_MAP = {
+    "youtube": {
+        "aac": "192",
+        "normalize": "fine",
+        "speed": "1.5",
+        "orig_vol": "0.65",
+        "audio_only": False,
+    },
+    "tiktok": {
+        "aac": "128",
+        "normalize": "fine",
+        "speed": "1.8",
+        "orig_vol": "0.70",
+        "audio_only": True,
+    },
+    "podcast": {
+        "mp3": "128",
+        "normalize": "fine",
+        "speed": "1.5",
+        "orig_vol": "0.50",
+        "audio_only": True,
+    },
+    "cinema": {
+        "opus": "96",
+        "normalize": "fine",
+        "speed": "1.3",
+        "orig_vol": "0.50",
+        "audio_only": False,
+    },
+}
+
+
+def _explicit_flag(name: str, argv: list[str] | None = None) -> bool:
+    """Return True if the user explicitly passed --flag or -f in argv.
+
+    Uses sys.argv if argv is None (production), or a custom list (tests).
+    """
+    args_to_check = argv if argv is not None else sys.argv[1:]
+    for a in args_to_check:
+        if a.startswith('--'):
+            if a.startswith(f'--{name}') or a.startswith(f'--{name.replace("_","-")}'):
+                return True
+        elif a.startswith('-') and not a.startswith('--'):
+            # short flags: -o, -s
+            if a[1:] == name[:1]:
+                return True
+    return False
+
+
+def _apply_preset(args: argparse.Namespace, argv: list[str] | None = None) -> None:
+    """Apply a quality preset.
+    
+    A preset sets sensible defaults, but explicitly-passed CLI flags
+    always take precedence.
+
+    Args:
+        args: Parsed argparse namespace (will be modified in-place).
+        argv: Optional custom argv (used by tests). Defaults to sys.argv[1:].
+    """
+    if not args.preset:
+        return
+
+    preset = PRESET_MAP[args.preset]
+
+    # Codec: set only if no other codec flag was given
+    codec_explicit = any(_explicit_flag(c, argv) for c in ("aac", "mp3", "opus", "ac3"))
+    if not codec_explicit:
+        for codec_flag in ("aac", "mp3", "opus", "ac3"):
+            if codec_flag in preset:
+                setattr(args, codec_flag, preset[codec_flag])
+                break
+
+    # Normalize
+    if not _explicit_flag("normalize", argv) and "normalize" in preset:
+        args.normalize = preset["normalize"]
+
+    # Speed
+    if not _explicit_flag("speed", argv) and "speed" in preset:
+        args.speed = preset["speed"]
+
+    # orig_vol
+    if not _explicit_flag("orig_vol", argv) and "orig_vol" in preset:
+        args.orig_vol = preset["orig_vol"]
+
+    # audio-only
+    if not _explicit_flag("audio_only", argv) and not _explicit_flag("audio-only", argv) and "audio_only" in preset:
+        args.audio_only = preset["audio_only"]
+
+
 _PARSER = None
 
 
@@ -116,6 +208,7 @@ def _print_dry_run(args, backend_cls, voice, target_lang, output, entries):
 def main(args: argparse.Namespace | None = None) -> None:
     if args is None:
         args = _get_parser().parse_args(sys.argv[1:])
+    _apply_preset(args, sys.argv[1:])
     prev_cache_disabled = _CACHE_DISABLED
 
     _save_terminal()

@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  rusa:
+    build: .
+    image: bortoq/rusa
+    container_name: rusa
+    volumes:
+      - .:/data
+    entrypoint: ["rusa"]
+    command: ["--help"]

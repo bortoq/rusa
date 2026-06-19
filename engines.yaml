@@ -1,6 +1,20 @@
-# Built-in declarative TTS engines for rusa.
+# ─── Built-in declarative TTS engines for rusa ──────────────────────────────
+#
 # Users can override or add engines in ~/.config/rusa/engines.yaml
+# Full reference: doc/TTS_ENGINES.md
+#
+# Each engine needs:
+#   binary        — executable in PATH
+#   output_format — wav or mp3
+#   generate_cmd  — template with {in} {out} {voice}
+#   voice_parser  — how to parse voice list (static, espeak, one_per_line)
+#
+# For custom TTS not listed here, use --tts-cmd (see README.md)
+
 engines:
+
+  # ── Piper ─────────────────────────────────────────────────────────────
+  # Fast local neural TTS. Models: https://github.com/rhasspy/piper
   piper:
     display_name: piper
     binary: piper
@@ -16,6 +30,8 @@ engines:
     generate_cmd: "piper --model {voice} --output_file {out} --json-input < {in}"
     voice_parser: static
 
+  # ── RHVoice ────────────────────────────────────────────────────────────
+  # Lightweight local TTS for Russian, Ukrainian, etc.
   rhvoice:
     display_name: rhvoice
     binary: RHVoice-test
@@ -28,6 +44,8 @@ engines:
     generate_cmd: "RHVoice-test -p {voice} -i {in} -o {out}"
     voice_parser: static
 
+  # ── eSpeak-NG ──────────────────────────────────────────────────────────
+  # Ultra-fast, low-quality, many languages.
   espeak:
     display_name: espeak
     binary: espeak-ng
@@ -37,6 +55,8 @@ engines:
     generate_cmd: "espeak-ng -v {voice} -f {in} -w {out}"
     voice_parser: espeak
 
+  # ── Google TTS (gTTS) ─────────────────────────────────────────────────
+  # Cloud TTS, requires internet.
   gtts:
     display_name: gtts
     binary: gtts-cli
@@ -52,6 +72,8 @@ engines:
     generate_cmd: "gtts-cli --lang {voice} -f {in} -o {out}"
     voice_parser: static
 
+  # ── Festival ───────────────────────────────────────────────────────────
+  # Classic Edinburgh TTS. Very old but works offline.
   festival:
     display_name: festival
     binary: text2wave

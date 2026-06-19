@@ -757,3 +757,70 @@ def test_subtitle_container_mismatch_message_is_actionable(monkeypatch, tmp_path
     captured = capsys.readouterr()
     assert "--subs-mode convert" in captured.err
     assert "--subs-mode drop" in captured.err
+
+# ── Preset tests ──────────────────────────────────────────────────────
+
+
+class TestPreset:
+    """Quality presets (--preset)."""
+
+    def test_preset_youtube_applies_aac_and_normalize(self):
+        """--preset youtube must set AAC 192k + normalize fine."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "youtube", "movie.mkv"])
+        _apply_preset(args, ["--preset", "youtube", "movie.mkv"])
+        assert args.aac == "192"
+        assert args.normalize == "fine"
+
+    def test_preset_tiktok_applies_aac_audio_only(self):
+        """--preset tiktok must set AAC 128k + audio-only."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "tiktok", "movie.mkv"])
+        _apply_preset(args, ["--preset", "tiktok", "movie.mkv"])
+        assert args.aac == "128"
+        assert args.audio_only is True
+
+    def test_preset_podcast_applies_mp3_audio_only(self):
+        """--preset podcast must set MP3 128k + audio-only."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "podcast", "movie.mkv"])
+        _apply_preset(args, ["--preset", "podcast", "movie.mkv"])
+        assert args.mp3 == "128"
+        assert args.audio_only is True
+
+    def test_preset_cinema_applies_opus_normalize(self):
+        """--preset cinema must set Opus 96k + normalize fine."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "cinema", "movie.mkv"])
+        _apply_preset(args, ["--preset", "cinema", "movie.mkv"])
+        assert args.opus == "96"
+        assert args.normalize == "fine"
+
+    def test_preset_no_override_when_codec_explicit(self):
+        """Explicit --opus flag must win over --preset youtube (which sets AAC)."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "youtube", "--opus", "128", "movie.mkv"])
+        _apply_preset(args, ["--preset", "youtube", "--opus", "128", "movie.mkv"])
+        # youtube wants AAC, but user explicitly said --opus
+        assert args.aac is None  # not set by preset because user chose opus
+        assert args.opus == "128"
+
+    def test_preset_speed_explicit_wins(self):
+        """Explicit --speed must win over preset speed."""
+        from rusa import _apply_preset, _get_parser
+
+        parser = _get_parser()
+        args = parser.parse_args(["--preset", "cinema", "--speed", "2.5", "movie.mkv"])
+        _apply_preset(args, ["--preset", "cinema", "--speed", "2.5", "movie.mkv"])
+        # cinema preset has speed=1.3, but user said --speed 2.5
+        assert args.speed == "2.5"

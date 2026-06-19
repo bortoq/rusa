@@ -1,62 +1,90 @@
 # rusa Roadmap
 
-## Status
+## Project Status
 
-The project is stable after multiple refactoring phases:
+The project is stable after multiple refactoring phases. 205 tests pass on CI (Python 3.9, 3.11, 3.13).
 
-- **Phase 1** (CLI, cache, subs-mode, timing, exit codes): ✅ Complete
-- **Phase 2** (Module split): ✅ Complete
-- **Phase 3** (Assembly streaming): ✅ Complete
+- **PHASE 1** (CLI, cache, subs-mode, timing, exit codes): ✅ Complete
+- **PHASE 2** (Module split): ✅ Complete
+- **PHASE 3** (Assembly streaming): ✅ Complete
 - **Gradio → FastAPI migration**: ✅ Complete
 - **Python 3.8 dropped, 3.9+**: ✅ Complete
-- **CI**: 205 tests pass on Python 3.9, 3.11, 3.13
-
-Built-in TTS backend: `edge` (cloud). Custom TTS engines: `--tts-cmd`.
 
 ---
 
-## Remaining Items
+## Adoption Plan (Q3 2026) — Low-Risk Track
 
-### 1. Add built-in Edge TTS voices for missing languages
+Streamlined 5-week plan focusing exclusively on low-risk items:
+installation simplicity, TTS ecosystem docs, CI/CD integration, and onboarding.
 
-- Priority: **medium** | Cost: low | Risk: low
-- Languages: `uk`, `hi`, `id`, `th`, `vi`, `el`, `ro`, `hr`, `sr`, `bg`, `ms`, `sk`
-- Current behaviour: aliases exist (e.g. `ukrainian → uk`) but no voice in `LANG_VOICE_MAP` → "Language not supported" error
-- Solution: Add actual voice names from Edge TTS for these languages. If no voice is known, remove the alias or give a clear error asking for `--voice`.
+### Week 1: Docker
 
-### 2. Add `--overwrite` / output file overwrite warning
+**Goal:** One-command setup.
 
-- Priority: **medium** | Cost: low | Risk: low
-- File: `rusa.py`, `main()`
-- Problem: `rusa` silently overwrites the output file with ffmpeg `-y` flag
-- Solution: Before launching ffmpeg, check if `output` exists; warn user (or skip warning if `--yes`/`--overwrite` is passed)
+- `Dockerfile` + `.dockerignore` + `docker-compose.yml`
+- Multi-stage build (pip install → runtime)
+- `pyproject.toml` entrypoint update
+- Install docs: `docker run --rm -v $(pwd):/data bortoq/rusa movie.mkv`
 
-### 3. Consider removing `shell=True` from `CustomCmdBackend`
+### Week 2: TTS Engine Documentation
 
-- Priority: **low** | Cost: medium | Risk: medium
-- File: `rusa_shared.py`, `CustomCmdBackend.generate`
-- Problem: `shlex.quote` reduces shell injection risk but doesn't eliminate it. `shell=True` allows pipes and redirects in user templates (convenient but dangerous)
-- Options:
-  - A: keep `shell=True` + `shlex.quote` (current)
-  - B: parse template into argument list, run with `shell=False` (safer, breaks pipes)
-  - C: document risks and recommend against pipe-based templates
+**Goal:** Users can easily connect best open-source TTS models.
 
-### 4. Cache `EdgeTtsBackend.validate_voice` result
+- Pre-tested `engines.yaml` examples for Chatterbox, XTTS v2, Kokoro, Piper
+- Reference guide for the `engines.yaml` format
+- Test each example on a real video
 
-- Priority: **low** | Cost: low | Risk: low
-- Problem: Each `validate_voice()` call runs `edge-tts --list-voices` (network/subprocess). This slows down every run when `--voice` is specified.
-- Solution: Cache the result at session level (e.g. `lru_cache` or class-level cache)
+### Week 3: GitHub Action
 
-### 5. Unify `cache_bucket_stats` (recursive) and `_evict_oldest` (single-level)
+**Goal:** CI/CD voiceover pipeline.
 
-- Priority: **low** | Cost: low | Risk: low
-- Problem: Stats walk the directory tree recursively, eviction only cleans one level. If subdirectories ever appear in the cache, stats and eviction will disagree.
+- `action.yml` with inputs: `video`, `srt`, `lang`, `voice`, `tts-cmd`
+- Example workflow in `README.md`
+- Timeout-aware (document 6h GitHub limit)
 
-### 6. Separate `print_cache_stats` / `clear_cache` logic from `sys.exit`
+### Week 4: Onboarding
 
-- Priority: **low** | Cost: low | Risk: low
-- Problem: These functions call `sys.exit(0)` directly, making them hard to reuse from the REST API
-- Solution: Extract return-value logic; CLI wrapper calls `sys.exit`
+**Goal:** New users productive in 5 minutes.
+
+- "Quick start in 5 minutes" guide in `README.md`
+- 4–5 ready-to-run examples
+- Comparison table with pyvideotrans, Pandrator
+- Restructured `README.md` (better flow, less wall of text)
+
+### Week 5: Presets
+
+**Goal:** One-flag quality profiles.
+
+- `--preset youtube`, `--preset tiktok`, `--preset podcast`, `--preset cinema`
+- Default flags per preset (codec, bitrate, normalize, speed)
+- Preset documentation in `README.md`
+
+---
+
+## Backlog (deferred)
+
+These items are recorded for future consideration but NOT in current scope:
+
+| Item | Reason deferred |
+|------|----------------|
+| Flet GUI | Conflicts with existing tkinter + adds Flutter dependency |
+| Multi-speaker | Architecture change, needs separate design phase |
+| Telegram bot | Requires job queue, long-running task infra |
+| REST API improvements | Baseline already exists (`webui/server.py`) |
+| Freemium / billing | Premature — no user base yet |
+
+---
+
+## Remaining Technical Debt
+
+| # | Item | Priority | Risk |
+|---|------|----------|------|
+| 1 | Add built-in Edge TTS voices for: uk, hi, id, th, vi, el, ro, hr, sr, bg, ms, sk | medium | low |
+| 2 | Add `--overwrite` / output file overwrite warning | medium | low |
+| 3 | Consider removing `shell=True` from `CustomCmdBackend` | low | medium |
+| 4 | Cache `EdgeTtsBackend.validate_voice` result | low | low |
+| 5 | Unify `cache_bucket_stats` (recursive) and `_evict_oldest` (single-level) | low | low |
+| 6 | Separate `print_cache_stats` / `clear_cache` logic from `sys.exit` | low | low |
 
 ---
 
@@ -85,6 +113,11 @@ Built-in TTS backend: `edge` (cloud). Custom TTS engines: `--tts-cmd`.
 | 19 | Fix: dead code removal (`if not output`, unused imports) | ✅ |
 | 20 | Fix: `__all__` in all modules | ✅ |
 | 21 | Fix: LRU cache eviction | ✅ |
+| 22 | Docker image | ⏳ Week 1 |
+| 23 | TTS engine docs + examples | ⏳ Week 2 |
+| 24 | GitHub Action | ⏳ Week 3 |
+| 25 | Onboarding + README restructure | ⏳ Week 4 |
+| 26 | Quality presets (`--preset`) | ⏳ Week 5 |
 
 ---
 
