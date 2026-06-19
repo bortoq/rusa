@@ -15,7 +15,7 @@ from collections.abc import Generator
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -220,7 +220,7 @@ def create_app() -> FastAPI:
     @app.post("/api/process")
     async def process_video(
         video: UploadFile = File(...),
-        srt: UploadFile | None = File(None),
+        srt: Optional[UploadFile] = File(None),
         lang: str | None = Form(None),
         voice: str | None = Form(None),
         tts_cmd: str = Form(""),
