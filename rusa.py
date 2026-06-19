@@ -142,8 +142,15 @@ def main(args: argparse.Namespace | None = None) -> None:
             _root = os.path.dirname(os.path.abspath(__file__))
             if _root not in sys.path:
                 sys.path.insert(0, _root)
-            from webui import run
-            run()
+            try:
+                from webui import run
+                run()
+            except ImportError as exc:
+                die(
+                    f"API server не доступен: {exc}. "
+                    "Установите: pip install fastapi uvicorn",
+                    EXIT_DEPENDENCY_ERROR,
+                )
             sys.exit(0)
 
         if not args.video:

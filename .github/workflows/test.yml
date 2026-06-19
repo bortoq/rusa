@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install edge-tts tqdm langdetect pytest
+          pip install edge-tts tqdm langdetect pytest fastapi uvicorn
 
       - name: Run tests (offline)
         run: pytest -q -m 'not slow and not live_tts'
