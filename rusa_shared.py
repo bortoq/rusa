@@ -125,7 +125,7 @@ LANG_VOICE_MAP = {
     "ar": "ar-SA-ZariyahNeural",
     "tr": "tr-TR-EmelNeural",
     "nl": "nl-NL-ColetteNeural",
-    "pl": "pl-PL-AgnieszkaNeural",
+    "pl": "pl-PL-ZofiaNeural",
     "sv": "sv-SE-SofieNeural",
     "da": "da-DK-ChristelNeural",
     "fi": "fi-FI-NooraNeural",
@@ -144,7 +144,7 @@ LANG_VOICE_MAP = {
     "sk": "sk-SK-ViktoriaNeural",
     "sr": "sr-RS-SophieNeural",
     "th": "th-TH-PremwadeeNeural",
-    "uk": "uk-UA-UlianaNeural",
+    "uk": "uk-UA-PolinaNeural",
     "vi": "vi-VN-HoaiMyNeural",
 }
 
