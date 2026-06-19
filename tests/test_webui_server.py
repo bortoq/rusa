@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 pytest.importorskip("fastapi")
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 PROJECT_DIR = Path(__file__).parent.parent
 
@@ -32,8 +32,18 @@ def app() -> FastAPI:
 
 @pytest.fixture
 def client(app: FastAPI) -> TestClient:
-    """TestClient wrapping the FastAPI app."""
-    return TestClient(app)
+    """TestClient wrapping the FastAPI app.
+
+    Requires ``httpx2`` on starlette >=1.4 (CI); falls back to ``httpx``
+    on older versions.  The import is inside the fixture so that the
+    module can be collected on Python 3.9 (where httpx2 is unavailable).
+    """
+    try:
+        return TestClient(app)
+    except RuntimeError as exc:
+        if "httpx2" in str(exc):
+            pytest.skip("TestClient requires httpx2")
+        raise
 
 
 @pytest.fixture
