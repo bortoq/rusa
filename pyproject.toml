@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-webui = ["gradio>=4.0"]
+webui = ["fastapi>=0.100", "uvicorn>=0.20"]
 
 [project.scripts]
 rusa = "rusa:main"

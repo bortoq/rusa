@@ -26,7 +26,7 @@ rusa movie.mkv
 - ⏱️ **Stage timing summary** — after a successful run, rusa prints elapsed time per stage: subtitles, TTS, WAV, assemble, mux
 - 💾 **Persistent cache** — TTS and WAV results are cached; repeated runs reuse cached data and skip network/ffmpeg calls. Automatic LRU eviction when cache exceeds 2 GiB
 - 🔐 **Terminal state guard** — saves and restores terminal attributes on exit/signal, preventing corruption
-- 🌐 **WebUI included** — browser-based interface (Gradio) for users who prefer a GUI
+- 🌐 **REST API server** — FastAPI-based processing server with Swagger docs
 - 🖥️ **Native GUI** — desktop interface (tkinter) for a native experience
 
 ## Quick Start
@@ -97,7 +97,7 @@ Dependencies: `ffmpeg` + `ffprobe` (part of ffmpeg), `python3`.
 | `--tts-cmd TEMPLATE`         | Custom TTS command (`{in}` `{out}` `{voice}`). Overrides `--engine` | — |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
-| `--webui`                    | Launch WebUI (Gradio interface)       | off                                |
+| `--webui`                    | Launch REST API server (FastAPI)      | off                                |
 
 ## Examples
 
@@ -343,9 +343,12 @@ B:                         |———— speech ————|
 
 B is heard with a delay but **fully**, without clipping words.
 
-## WebUI (Gradio Interface)
+## REST API Server
 
-rusa includes a browser-based WebUI built with Gradio. To launch it:
+rusa includes a lightweight REST API server for remote video processing.
+It replaces the old Gradio WebUI with a FastAPI-based headless server.
+
+To launch:
 
 ```bash
 rusa --webui
@@ -353,16 +356,24 @@ rusa --webui
 python -m webui
 ```
 
-The WebUI opens at `http://127.0.0.1:7860` and provides:
+The server starts at `http://127.0.0.1:7860` and provides:
 
-- Video file upload (.mkv, .mp4, .avi, .mov, .webm)
-- Optional SRT subtitle file upload
-- Language and voice selection
-- Custom TTS command input
-- Speed, volume, codec, and normalization controls
-- Subtitle mode selection (auto/copy/convert/drop)
-- Real-time log output during processing
-- Downloadable result file
+- `POST /api/process` — upload a video + optional SRT, stream real-time logs via SSE, download result
+- `GET /api/download/{path}` — download a processed file
+- `GET /health` — health check
+- `GET /docs` — interactive Swagger API documentation
+
+### API Usage Example
+
+```bash
+# Process a video
+curl -X POST http://127.0.0.1:7860/api/process   -F "video=@movie.mkv"   -F "lang=ru"   -F "speed=1.5"
+
+# Stream logs (SSE format)
+curl -N http://127.0.0.1:7860/api/process   -F "video=@movie.mkv"
+```
+
+Install server dependencies: `pip install rusa[webui]` or `pip install fastapi uvicorn`
 
 ### Native GUI (tkinter)
 

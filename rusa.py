@@ -138,19 +138,12 @@ def main(args: argparse.Namespace | None = None) -> None:
         rusa_shared._CACHE_DISABLED = bool(args.no_cache)
 
         if args.webui:
-            # Launch WebUI (Gradio) instead of CLI processing
+            # Launch API server instead of CLI processing
             _root = os.path.dirname(os.path.abspath(__file__))
             if _root not in sys.path:
                 sys.path.insert(0, _root)
-            try:
-                from webui import run
-                run()
-            except ImportError as exc:
-                die(
-                    f"WebUI не доступен: {exc}. "
-                    "Установите gradio: pip install gradio",
-                    EXIT_DEPENDENCY_ERROR,
-                )
+            from webui import run
+            run()
             sys.exit(0)
 
         if not args.video:

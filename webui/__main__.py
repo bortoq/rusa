@@ -1,7 +1,7 @@
 """Entry point for ``python -m webui``."""
 from __future__ import annotations
 
-from webui.app import main
+from webui.server import main
 
 if __name__ == "__main__":
     main()

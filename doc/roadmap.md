@@ -445,99 +445,53 @@ These items are recorded in `audit_report.md` and remain relevant for future ite
 
 ---
 
-## 24. WebUI — User Interface (Gradio)
+## 24. WebUI — migrated from Gradio to FastAPI REST API
 
 - Priority: **medium**
-- Status: **completed**
-- Difficulty: 15–19 person-days
-- Risk: medium
+- Status: **completed** (migrated from Gradio to FastAPI)
+- Difficulty: 15–19 person-days (original) + 3 days (migration)
 
-### Rationale
+### Change
 
-Adding a WebUI makes rusa accessible to users without command-line experience,
-and simplifies visual monitoring of video processing progress.
+The old Gradio-based WebUI was replaced with a lightweight FastAPI REST API server.
+The Gradio frontend (, ) was removed.
+The server now provides HTTP endpoints instead of a browser GUI.
 
-### Framework Choice: Gradio ✅
-
-| Criterion | Gradio | Streamlit | FastAPI+HTMX | NiceGUI |
-|---|---|---|---|---|
-| Dev speed | ★★★★★ | ★★★★ | ★★ | ★★★★ |
-| Code integration | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
-| Progress & files | ★★★★★ | ★★★★ | ★★★ | ★★★ |
-| Ease of deploy | ★★★★★ | ★★★★ | ★★★ | ★★★★ |
-| TTS/ML community | ★★★★★ | ★★★★★ | ★★★★ | ★★★ |
-
-### Architecture
+### Current Architecture
 
 ```
 rusa/
-├── rusa.py                 # CLI entrypoint
+├── rusa.py                 # CLI entrypoint (--webui → FastAPI server)
 ├── webui/
-│   ├── __init__.py
-│   ├── app.py              # Главный Gradio app
-│   ├── components.py       # Переиспользуемые компоненты UI
-│   ├── config.py           # Настройки WebUI
-│   └── utils.py            # Вспомогательные функции
+│   ├── __init__.py          # run() → launches uvicorn
+│   ├── server.py            # FastAPI app, /api/process, /health, /api/download
+│   ├── config.py            # Shared configuration constants
+│   └── utils.py             # build_args(), pick_output_file()
 ├── engines.yaml
 └── pyproject.toml
 ```
 
-**Principle:** WebUI calls existing rusa functions without duplicating logic.
+### API Endpoints
 
-### Implementation Phases
+| Method | Path | Description |
+|--------|------|-------------|
+| GET |  | Health check |
+| POST |  | Upload video + params, stream log via SSE |
+| GET |  | Download processed file |
+| GET |  | Swagger UI |
 
-#### Phase 1: Preparation and Architecture (3–4 days)
+### Dependencies
 
-- [x] Create `webui/` package with modules
-- [x] Add `gradio>=4.0` to `pyproject.toml` (optional dependency)
-- [x] Create `webui/app.py` — Gradio entry point
-- [x] CLI flag `--webui` to launch the interface
+- Removed: 
+- Added: ,  (optional dep `[webui]`)
 
-#### Phase 2: Basic Interface (5–6 days)
+### Status
 
-- [x] Video and SRT upload (`gr.File`)
-- [x] Language and voice selection (`gr.Dropdown`)
-- [x] `--tts-cmd` field with examples (`gr.Textbox`)
-- [x] Settings: volume, speed, codec (`gr.Slider`)
-- [x] Process button with progress bar (`gr.Button` + `gr.Progress`)
-
-#### Phase 3: Advanced Features (4–5 days)
-
-- [x] Real-time log and processing stage output
-- [x] Result preview and download
-- [ ] Processing history
-- [ ] Batch processing support
-
-#### Phase 4: Polish and Integration (3–4 days)
-
-- [ ] Docker image with WebUI
-- [ ] Launch documentation
-- [ ] Linux/macOS/Windows testing
-- [x] README update
-
-### MVP Features (first release)
-
-Required:
-- Video + SRT upload
-- Language/voice selection
-- `--tts-cmd` with examples
-- Progress bar with stages
-- Download result
-- Real-time logs
-
-Optional (later):
-- Preset saving
-- Batch mode
-- Dark theme
-
-### Potential Issues
-
-| Issue | Solution |
-|----------|---------|
-| Memory allocation in long-running tasks | Use queues / background workers |
-| Two interfaces (CLI + WebUI) to maintain | WebUI only calls core functions, doesn't duplicate |
-| Progress bar with multi-threaded TTS | Publish updates via `gr.Progress()` with callbacks |
-| Gradio dependency increases package size | Make `gradio` an extra dep (`pip install rusa[webui]`) |
+- [x] FastAPI server with streaming SSE response
+- [x] File upload, processing, download
+- [x] Path traversal protection
+- [x] CORS for local development
+- [x] Tests: 22 server tests + 19 config/utils tests
 
 
 ### 25. Drop Python 3.8 support

@@ -131,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--webui",
         action="store_true",
-        help="Запустить WebUI (Gradio) вместо CLI",
+        help="Запустить API сервер вместо CLI",
     )
     return parser
 
