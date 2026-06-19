@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-webui = ["fastapi>=0.100", "uvicorn>=0.20"]
+webui = ["fastapi>=0.100", "uvicorn>=0.20", "python-multipart>=0.0.5"]
 
 [project.scripts]
 rusa = "rusa:main"
