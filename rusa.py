@@ -338,8 +338,14 @@ def main(args: argparse.Namespace | None = None) -> None:
         args.output = output
 
         if os.path.isfile(output):
-            warn(f"Выходной файл существует: {output}")
-            warn("Файл будет перезаписан. Используйте -o для указания другого имени.")
+            if args.overwrite:
+                warn(f"Выходной файл существует: {output} (перезапись)")
+            else:
+                die(
+                    f"Выходной файл существует: {output}. "
+                    "Используйте --overwrite для перезаписи или -o для другого имени.",
+                    EXIT_USAGE_ERROR,
+                )
 
         sync_str = "вкл" if args.sync else "выкл"
         codec_info = _get_codec(audio_fmt, audio_bitrate)

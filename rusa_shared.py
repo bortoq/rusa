@@ -533,6 +533,7 @@ def register_backend(backend_cls: type[TtsBackend]) -> None:
 class EdgeTtsBackend(TtsBackend):
     name = "edge"
     _display_name = "edge-tts"
+    _voices_cache: list[tuple[str, str]] | None = None
 
     @classmethod
     def is_available(cls) -> bool:
@@ -547,6 +548,8 @@ class EdgeTtsBackend(TtsBackend):
 
     @classmethod
     def list_voices(cls) -> list[tuple[str, str]]:
+        if cls._voices_cache is not None:
+            return cls._voices_cache
         rc = subprocess.run(
             ["python3", "-m", "edge_tts", "--list-voices"],
             check=False, capture_output=True, text=True,
@@ -563,6 +566,7 @@ class EdgeTtsBackend(TtsBackend):
             lang_code = name_part[:2].lower() if len(name_part) >= 2 else ""
             if lang_code:
                 result.append((line, lang_code))
+        cls._voices_cache = result
         return result
 
     @classmethod

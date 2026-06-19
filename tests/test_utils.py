@@ -228,7 +228,13 @@ class TestRunDynaudnorm:
 # ── list_voices ──────────────────────────────────────────────────────
 
 class TestListVoices:
+    @staticmethod
+    def _reset_voices_cache(monkeypatch):
+        from rusa_shared import EdgeTtsBackend
+        monkeypatch.setattr(EdgeTtsBackend, "_voices_cache", None)
+
     def test_list_voices_success(self, monkeypatch, capsys):
+        self._reset_voices_cache(monkeypatch)
         """list_voices should print voice list and exit cleanly."""
         def fake_run(cmd, **kw):
             return subprocess.CompletedProcess(
@@ -247,6 +253,7 @@ class TestListVoices:
         assert "ru-RU-SvetlanaNeural" in captured.out
 
     def test_list_voices_edge_tts_fails(self, monkeypatch, capsys):
+        self._reset_voices_cache(monkeypatch)
         """list_voices should show note when edge-tts fails."""
         def fake_run(cmd, **kw):
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="error")
@@ -258,6 +265,7 @@ class TestListVoices:
         assert "edge-tts" in captured.out
 
     def test_list_voices_shows_filters_ru(self, monkeypatch, capsys):
+        self._reset_voices_cache(monkeypatch)
         """list_voices should filter output for Russian voices."""
         def fake_run(cmd, **kw):
             return subprocess.CompletedProcess(

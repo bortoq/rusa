@@ -129,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Сгенерировать только первые N субтитров (preview-режим)",
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Перезаписать выходной файл без предупреждения (если существует)",
+    )
+    parser.add_argument(
         "--preset",
         choices=["youtube", "tiktok", "podcast", "cinema"],
         default=None,
