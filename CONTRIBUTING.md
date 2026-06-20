@@ -1,20 +1,20 @@
 # Contributing
 
-rusa is maintained **CLI-first**.
+rusa is maintained as a **CLI-first** project.
 
 ## Priorities
 
 1. core pipeline correctness
-2. CLI UX and diagnostics
+2. simple English CLI UX and diagnostics
 3. tests and regressions
 4. documentation and packaging
-5. experimental layers (`--webui`, tkinter GUI)
+5. release discipline
 
 ## Before changing behavior
 
 - update `README.md`
 - add or update tests
-- keep offline tests runnable with:
+- keep fast checks runnable:
 
 ```bash
 pytest -q -m 'not slow and not live_tts'
@@ -23,5 +23,5 @@ pytest -q tests/test_cli_smoke.py
 
 ## Scope guidance
 
-If a change improves the core CLI flow, it is likely in scope.
-If a change mainly expands GUI/WebUI behavior, treat it as lower priority unless it fixes a regression.
+Changes that improve the core CLI flow are in scope.
+Changes that add a new UI layer are out of scope for now.

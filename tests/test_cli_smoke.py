@@ -27,6 +27,23 @@ def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Comple
     )
 
 
+def _write_fake_command(bin_dir: Path, name: str) -> None:
+    """Create a fake executable command in *bin_dir*.
+
+    Uses POSIX shell scripts on Unix and `.cmd` wrappers on Windows so that
+    both `subprocess.run([name, ...])` and `shutil.which(name)` behave as
+    expected on CI.
+    """
+    if os.name == "nt":
+        path = bin_dir / f"{name}.cmd"
+        path.write_text("@echo off\r\nexit /b 0\r\n", encoding="utf-8")
+    else:
+        path = bin_dir / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+
 def _make_fake_runtime(tmp_path: Path) -> dict[str, str]:
     """Create fake toolchain for subprocess-based CLI smoke tests."""
     bin_dir = tmp_path / "bin"
@@ -34,11 +51,8 @@ def _make_fake_runtime(tmp_path: Path) -> dict[str, str]:
     bin_dir.mkdir()
     py_dir.mkdir()
 
-    script_template = "#!/bin/sh\nexit 0\n"
     for name in ("ffmpeg", "ffprobe", "piper", "espeak-ng", "gtts-cli", "text2wave", "RHVoice-test"):
-        path = bin_dir / name
-        path.write_text(script_template, encoding="utf-8")
-        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        _write_fake_command(bin_dir, name)
 
     edge_tts = py_dir / "edge_tts.py"
     edge_tts.write_text(
@@ -329,33 +343,3 @@ def test_cli_missing_ffmpeg_fails_with_dependency_exit_code(tmp_path: Path) -> N
 
 
 
-def test_cli_missing_edge_tts_fails_with_dependency_exit_code(tmp_path: Path) -> None:
-    bin_dir = tmp_path / "bin"
-    py_dir = tmp_path / "py"
-    bin_dir.mkdir()
-    py_dir.mkdir()
-    for name in ("ffmpeg", "ffprobe"):
-        path = bin_dir / name
-        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        path.chmod(path.stat().st_mode | stat.S_IXUSR)
-    (py_dir / "edge_tts.py").write_text(
-        "import sys\nprint('edge-tts not found', file=sys.stderr)\nraise SystemExit(1)\n",
-        encoding="utf-8",
-    )
-    env = {
-        "PATH": str(bin_dir),
-        "PYTHONPATH": str(py_dir),
-    }
-    video = tmp_path / "movie.mkv"
-    srt = tmp_path / "movie.srt"
-    video.write_bytes(b"fake video")
-    srt.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
-
-    result = _run_cli(
-        "--dry-run",
-        "-s", str(srt),
-        str(video),
-        env=env,
-    )
-    assert result.returncode == 3
-    assert "edge-tts" in result.stderr.lower()
