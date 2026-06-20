@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """Shared constants, optional deps, utilities, and cache helpers for rusa."""
-__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "_save_terminal", "_restore_terminal"]
+__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "_save_terminal", "_restore_terminal"]
 
 import hashlib
 import os
@@ -13,7 +13,11 @@ import sys
 import time
 import atexit
 import signal
-import termios
+
+try:
+    import termios
+except ImportError:  # pragma: no cover - Windows
+    termios = None  # type: ignore[assignment]
 
 HAS_TQDM = False
 HAS_LANGDETECT = False
@@ -288,6 +292,25 @@ def which(cmd: str) -> str:
     return exe
 
 
+def python_executable() -> str:
+    """Return the current Python interpreter path.
+
+    Prefer ``sys.executable`` for cross-platform compatibility (Windows often
+    lacks a ``python3`` launcher in PATH). Fall back to PATH lookup only if
+    needed.
+    """
+    candidates = [sys.executable, shutil.which("python3"), shutil.which("python")]
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    die("Python interpreter не найден", EXIT_DEPENDENCY_ERROR)
+
+
+def python_module_cmd(module: str, *args: str) -> list[str]:
+    """Build ``python -m module ...`` command using the current interpreter."""
+    return [python_executable(), "-m", module, *args]
+
+
 def shell(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     check = kwargs.pop("check", True)
     capture = kwargs.pop("capture_output", False)
@@ -539,7 +562,7 @@ class EdgeTtsBackend(TtsBackend):
     def is_available(cls) -> bool:
         try:
             rc = subprocess.run(
-                ["python3", "-m", "edge_tts", "--help"],
+                python_module_cmd("edge_tts", "--help"),
                 check=False, capture_output=True,
             )
             return rc.returncode == 0
@@ -551,7 +574,7 @@ class EdgeTtsBackend(TtsBackend):
         if cls._voices_cache is not None:
             return cls._voices_cache
         rc = subprocess.run(
-            ["python3", "-m", "edge_tts", "--list-voices"],
+            python_module_cmd("edge_tts", "--list-voices"),
             check=False, capture_output=True, text=True,
         )
         if rc.returncode != 0:
@@ -577,7 +600,7 @@ class EdgeTtsBackend(TtsBackend):
     @classmethod
     def validate_voice(cls, voice: str) -> str | None:
         rc = subprocess.run(
-            ["python3", "-m", "edge_tts", "--list-voices"],
+            python_module_cmd("edge_tts", "--list-voices"),
             check=False, capture_output=True, text=True,
         )
         if rc.returncode == 0 and voice not in rc.stdout:
@@ -587,7 +610,7 @@ class EdgeTtsBackend(TtsBackend):
     @staticmethod
     def generate(text: str, voice: str, out: str) -> int:
         return subprocess.run(
-            ["edge-tts", "--voice", voice, "--text", text, "--write-media", out],
+            python_module_cmd("edge_tts", "--voice", voice, "--text", text, "--write-media", out),
             capture_output=True, timeout=180, check=False,
         ).returncode
 
@@ -692,7 +715,7 @@ _TERM_ATTRS = None
 def _save_terminal() -> None:
     """Save current terminal attributes for restoration on exit."""
     global _TERM_SAVED, _TERM_FD, _TERM_ATTRS
-    if _TERM_SAVED:
+    if _TERM_SAVED or termios is None:
         return
     try:
         fd = sys.stdin.fileno()
@@ -700,18 +723,23 @@ def _save_terminal() -> None:
             _TERM_FD = fd
             _TERM_ATTRS = termios.tcgetattr(fd)
             _TERM_SAVED = True
-    except (termios.error, OSError, AttributeError):
+    except (OSError, AttributeError):
+        pass
+    except Exception:
+        # termios.error is platform-specific; keep the guard portable.
         pass
 
 
 def _restore_terminal() -> None:
     """Restore terminal attributes to saved state."""
     global _TERM_SAVED, _TERM_FD, _TERM_ATTRS
-    if not _TERM_SAVED or _TERM_FD < 0 or _TERM_ATTRS is None:
+    if termios is None or not _TERM_SAVED or _TERM_FD < 0 or _TERM_ATTRS is None:
         return
     try:
         termios.tcsetattr(_TERM_FD, termios.TCSANOW, _TERM_ATTRS)
-    except (termios.error, OSError):
+    except OSError:
+        pass
+    except Exception:
         pass
     finally:
         _TERM_SAVED = False

@@ -5,12 +5,25 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rusa"
 version = "1.0.0"
-description = "Russian Voiceover for Movies — создаёт голосовой закадровый перевод по субтитрам"
+description = "CLI tool for AI voiceover translation from subtitles"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+keywords = ["cli", "tts", "voiceover", "subtitles", "ffmpeg", "translation"]
 authors = [
     { name = "rusa contributors" },
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Multimedia :: Video",
 ]
 dependencies = [
     "edge-tts>=7.0.0",
@@ -29,9 +42,12 @@ rusa-gui = "rusa_gui:main"
 [project.urls]
 Homepage = "https://github.com/bortoq/rusa"
 Source = "https://github.com/bortoq/rusa"
+Documentation = "https://github.com/bortoq/rusa#readme"
+Changelog = "https://github.com/bortoq/rusa/blob/master/CHANGELOG.md"
 BugTracker = "https://github.com/bortoq/rusa/issues"
 
 [tool.setuptools]
 py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts", "rusa_gui"]
 packages = ["webui"]
 include-package-data = true
+license-files = ["LICENSE"]

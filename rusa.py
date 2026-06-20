@@ -66,6 +66,7 @@ from rusa_shared import (          # noqa: F401 — re-exported as public API
     wav_cache_path as _wav_cache_path,
     warn,
     which,
+    python_executable,
 )
 from rusa_subtitle import detect_language_from_srt, step_extract_subtitles, step_merge_srt_entries, step_parse_srt, step_sync_alass
 from rusa_tts import _split_text, step_generate_tts
@@ -256,7 +257,7 @@ def main(args: argparse.Namespace | None = None) -> None:
 
         which("ffmpeg")
         which("ffprobe")
-        which("python3")
+        python_executable()
 
         # Resolve TTS backend
         if args.tts_cmd:

@@ -58,10 +58,12 @@ def build_args(
         "range_from": range_from,
         "range_to": range_to,
         "preview": preview,
-        # Flags not exposed via WebUI — use defaults
+        # Flags not exposed via WebUI — keep Namespace compatible with main()
         "webui": False,
         "cache_stats": False,
         "cache_clear": False,
+        "preset": None,
+        "overwrite": False,
     }
 
     # Set audio codec flags (mutually exclusive in CLI)

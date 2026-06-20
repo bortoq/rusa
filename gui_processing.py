@@ -50,7 +50,7 @@ def run_processing(
     *log_callback(text)* is called for each line of output.
     *done_callback(success, output_path)* is called when finished.
     """
-    from rusa_shared import which
+    from rusa_shared import python_executable, python_module_cmd, which
 
     log_callback(f"▶ Начинаю обработку: {os.path.basename(args.video)}")
 
@@ -58,19 +58,19 @@ def run_processing(
     try:
         which("ffmpeg")
         which("ffprobe")
-        which("python3")
+        python_executable()
     except SystemExit:
-        log_callback("❌ ffmpeg/ffprobe не найдены. Установите FFmpeg.")
+        log_callback("❌ ffmpeg/ffprobe/python не найдены. Установите зависимости.")
         done_callback(False, None)
         return
 
-    log_callback("✓ ffmpeg, ffprobe, python3 — найдены")
+    log_callback("✓ ffmpeg, ffprobe, python — найдены")
 
     # Check edge-tts
     if not args.tts_cmd:
         try:
             rc = subprocess.run(
-                ["python3", "-m", "edge_tts", "--help"],
+                python_module_cmd("edge_tts", "--help"),
                 check=False, capture_output=True, timeout=30,
             )
             if rc.returncode != 0:
@@ -112,10 +112,6 @@ def run_processing(
                 log_callback(f"📁 Выходной файл: {final}")
                 done_callback(True, final)
                 return
-        flush_captured(stdout_capture, stderr_capture, log_callback)
-        log_callback(f"❌ Ошибка обработки (код {exc.code})")
-        done_callback(False, None)
-        return
         flush_captured(stdout_capture, stderr_capture, log_callback)
         log_callback(f"❌ Ошибка обработки (код {exc.code})")
         done_callback(False, None)

@@ -103,25 +103,25 @@ def _process_video(
 
     yield _sse_event("log", f"▶ Начинаю обработку: {os.path.basename(video_file)}")
 
-    from rusa_shared import which
+    from rusa_shared import python_executable, python_module_cmd, which
 
     try:
         which("ffmpeg")
         which("ffprobe")
-        which("python3")
+        python_executable()
     except SystemExit as exc:
         yield _sse_event(
             "error",
-            f"Ошибка: ffmpeg/ffprobe не найдены (exit {exc.code})",
+            f"Ошибка: ffmpeg/ffprobe/python не найдены (exit {exc.code})",
         )
         return
 
-    yield _sse_event("log", "✓ ffmpeg, ffprobe, python3 — найдены")
+    yield _sse_event("log", "✓ ffmpeg, ffprobe, python — найдены")
 
     if not args.tts_cmd:
         try:
             rc = subprocess.run(
-                ["python3", "-m", "edge_tts", "--help"],
+                python_module_cmd("edge_tts", "--help"),
                 check=False, capture_output=True, timeout=30,
             )
             if rc.returncode != 0:
@@ -242,14 +242,16 @@ def create_app() -> FastAPI:
         and ``complete`` events.
         """
         tmpdir = tempfile.mkdtemp(prefix="rusa_upload_")
-        video_path = os.path.join(tmpdir, video.filename or "input_video")
+        video_name = Path(video.filename or "input_video").name or "input_video"
+        video_path = os.path.join(tmpdir, video_name)
         content = await video.read()
         with open(video_path, "wb") as f:
             f.write(content)
 
         srt_path: Optional[str] = None
         if srt and srt.filename:
-            srt_path = os.path.join(tmpdir, srt.filename or "subtitles.srt")
+            srt_name = Path(srt.filename or "subtitles.srt").name or "subtitles.srt"
+            srt_path = os.path.join(tmpdir, srt_name)
             srt_content = await srt.read()
             with open(srt_path, "wb") as f:
                 f.write(srt_content)

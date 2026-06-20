@@ -81,6 +81,8 @@ class TestBuildArgs:
         assert ns.srt is None
         assert ns.speed == "1.5"
         assert ns.subs_mode == "auto"
+        assert ns.preset is None
+        assert ns.overwrite is False
 
     def test_voice_and_lang(self):
         from webui.utils import build_args
@@ -161,7 +163,8 @@ class TestBuildArgs:
                      "subs_mode", "merge_sentences", "keep_temp", "sync",
                      "audio_only", "output", "dry_run", "no_cache",
                      "range_from", "range_to", "preview", "webui",
-                     "cache_stats", "cache_clear", "aac", "mp3", "opus", "ac3"}
+                     "cache_stats", "cache_clear", "preset", "overwrite",
+                     "aac", "mp3", "opus", "ac3"}
         ns_keys = set(vars(ns).keys())
         missing = required - ns_keys
         assert not missing, f"build_args() missing keys required by main(): {missing}"

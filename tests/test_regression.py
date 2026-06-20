@@ -239,7 +239,7 @@ def test_main_prints_timing_summary(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     def fake_run(cmd, **kwargs):
-        if cmd[:3] == ["python3", "-m", "edge_tts"]:
+        if len(cmd) >= 3 and cmd[1:3] == ["-m", "edge_tts"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 

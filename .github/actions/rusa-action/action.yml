@@ -50,43 +50,43 @@ runs:
 
     - name: Install rusa
       run: |
-        pip install rusa[webui] edge-tts tqdm langdetect
+        pip install rusa edge-tts tqdm langdetect
       shell: bash
 
     - name: Run rusa
       run: |
-        ARGS=""
+        args=()
 
         if [ -n "${{ inputs.srt }}" ]; then
-          ARGS="$ARGS -s ${{ inputs.srt }}"
+          args+=(-s "${{ inputs.srt }}")
         fi
 
         if [ -n "${{ inputs.lang }}" ]; then
-          ARGS="$ARGS --lang ${{ inputs.lang }}"
+          args+=(--lang "${{ inputs.lang }}")
         fi
 
         if [ -n "${{ inputs.voice }}" ]; then
-          ARGS="$ARGS --voice ${{ inputs.voice }}"
+          args+=(--voice "${{ inputs.voice }}")
         fi
 
         if [ -n "${{ inputs.tts_cmd }}" ]; then
-          ARGS="$ARGS --tts-cmd '${{ inputs.tts_cmd }}'"
+          args+=(--tts-cmd "${{ inputs.tts_cmd }}")
         fi
 
         if [ -n "${{ inputs.engine }}" ] && [ "${{ inputs.engine }}" != "edge" ]; then
-          ARGS="$ARGS --engine ${{ inputs.engine }}"
+          args+=(--engine "${{ inputs.engine }}")
         fi
 
         if [ -n "${{ inputs.speed }}" ]; then
-          ARGS="$ARGS --speed ${{ inputs.speed }}"
+          args+=(--speed "${{ inputs.speed }}")
         fi
 
         if [ -n "${{ inputs.output }}" ]; then
-          ARGS="$ARGS -o ${{ inputs.output }}"
+          args+=(-o "${{ inputs.output }}")
         fi
 
         echo "::group::rusa output"
-        rusa $ARGS ${{ inputs.video }}
+        rusa "${args[@]}" "${{ inputs.video }}"
         echo "::endgroup::"
       shell: bash
 

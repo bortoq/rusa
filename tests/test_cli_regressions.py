@@ -21,7 +21,7 @@ def test_main_without_codec_flag_reaches_subtitle_step(monkeypatch, tmp_path):
     video.write_bytes(b"fake")
 
     def fake_run(cmd, **kwargs):
-        if cmd[:3] == ["python3", "-m", "edge_tts"]:
+        if len(cmd) >= 3 and cmd[1:3] == ["-m", "edge_tts"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="ru-RU-SvetlanaNeural\n", stderr="")
         raise AssertionError(f"Unexpected subprocess call: {cmd}")
 
@@ -38,7 +38,7 @@ def test_main_without_codec_flag_reaches_subtitle_step(monkeypatch, tmp_path):
         rusa.main()
 
 
-def test_extract_subtitles_with_target_lang_does_not_fallback_to_plain_srt(tmp_path):
+def test_extract_subtitles_with_target_lang_does_not_fallback_to_plain_srt(monkeypatch, tmp_path):
     """--lang must not silently accept an unrelated plain .srt file."""
     video = tmp_path / "movie.mkv"
     video.write_bytes(b"fake")
@@ -48,8 +48,31 @@ def test_extract_subtitles_with_target_lang_does_not_fallback_to_plain_srt(tmp_p
         encoding="utf-8",
     )
 
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
     with pytest.raises(SystemExit):
         rusa.step_extract_subtitles(str(video), None, str(tmp_path), "he")
+
+
+def test_extract_subtitles_falls_back_to_matching_sidecar_when_ffprobe_missing(monkeypatch, tmp_path):
+    """If ffprobe is unavailable, matching sidecar subtitles should still work."""
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"fake")
+    sidecar = tmp_path / "movie.he.srt"
+    sidecar.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nשלום עולם\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+    out = rusa.step_extract_subtitles(str(video), None, str(tmp_path), "he")
+    assert Path(out).read_text(encoding="utf-8") == sidecar.read_text(encoding="utf-8")
 
 
 def test_main_rejects_unsupported_lang_without_explicit_voice(monkeypatch, tmp_path, capsys):

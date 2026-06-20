@@ -1,5 +1,6 @@
 """pytest fixtures for rusa tests."""
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -34,12 +35,22 @@ def pytest_addoption(parser):
 
 
 def pytest_sessionstart(session):
-    """Auto-generate fixtures if missing or --generate-fixtures given."""
+    """Auto-generate fixtures when possible, but don't fail unit-only runs.
+
+    If ffmpeg is unavailable and generated fixtures are missing, keep the test
+    session running: fixture-dependent integration tests will skip/fail through
+    their own guards, while pure unit tests remain runnable.
+    """
     generate = session.config.getoption("--generate-fixtures", default=False)
-    if generate or not (FIXTURES_DIR / "test_video.mkv").exists():
-        print("\nGenerating test fixtures (this may take a moment)...")
-        from tests.generate_fixtures import main
-        main()
+    fixtures_missing = not (FIXTURES_DIR / "test_video.mkv").exists()
+    if not (generate or fixtures_missing):
+        return
+    if shutil.which("ffmpeg") is None:
+        print("\nSkipping fixture generation: ffmpeg not found in PATH")
+        return
+    print("\nGenerating test fixtures (this may take a moment)...")
+    from tests.generate_fixtures import main
+    main()
 
 
 @lru_cache(maxsize=1)
@@ -47,7 +58,7 @@ def edge_tts_ready() -> bool:
     """Return True when edge-tts can list voices in this environment."""
     try:
         rc = subprocess.run(
-            ["python3", "-m", "edge_tts", "--list-voices"],
+            [sys.executable, "-m", "edge_tts", "--list-voices"],
             check=False,
             capture_output=True,
             text=True,

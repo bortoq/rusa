@@ -2,6 +2,8 @@
 
 **rusa** is a command-line tool that adds **full voiceover translation** to your video collection in a single command. Point it at a video file — rusa extracts subtitles, generates speech using TTS voices, and mixes it over the original audio.
 
+> **Project focus:** rusa is developed **CLI-first**. The supported path is the command-line workflow. Native GUI and REST API are currently **experimental** and may lag behind the CLI.
+
 Ideal for:
 - 🎬 **Movies & TV series** — voiceover in any language from existing subtitles
 - 🎙️ **Podcasts & lectures** — voiceover translation into any supported language
@@ -23,7 +25,7 @@ pip install rusa
 sudo apt install ffmpeg       # or: brew install ffmpeg
 
 # Windows
-pip install rusa
+py -m pip install rusa
 # Download ffmpeg.exe from https://ffmpeg.org and add to PATH
 ```
 
@@ -54,6 +56,16 @@ rusa -s subs.srt --speed 2.0 movie.mkv
 # YouTube-ready: AAC audio + fine normalization
 rusa --aac 192 --normalize fine movie.mkv
 ```
+
+---
+
+## Support Status
+
+- **Supported:** CLI workflow (`rusa ...`)
+- **Experimental:** `--webui`, `python -m webui`, `python rusa_gui.py`
+- **Best-tested environment:** Linux/macOS with `ffmpeg` in `PATH`
+- **Windows:** supported on a best-effort basis; prefer `py -m pip install rusa` and ensure `ffmpeg.exe` is in `PATH`
+- **Current maintenance priority:** core pipeline, CLI UX, tests, docs, packaging
 
 ---
 
@@ -123,7 +135,7 @@ rusa --preview 10 --dry-run movie.mkv
 | `--tts-cmd TEMPLATE`         | Custom TTS command (`{in}` `{out}` `{voice}`). Overrides `--engine` | — |
 | `--subs-mode {auto,copy,convert,drop}` | Subtitle handling in output video | `auto`                 |
 | `--normalize [{fast,fine}]`  | Volume normalization                  | off                                |
-| `--webui`                    | Launch REST API server (FastAPI)      | off                                |
+| `--webui`                    | Launch experimental REST API server (FastAPI) | off                        |
 
 ---
 
@@ -141,11 +153,11 @@ rusa --preview 10 --dry-run movie.mkv
 | **Cache** | LRU TTS+WAV cache (2 GiB) | None | None |
 | **Docker** | ✅ Official image | ❌ | ❌ |
 | **CI integration** | ✅ GitHub Action | ❌ | ❌ |
-| **REST API** | ✅ FastAPI + Swagger docs | ❌ | ❌ |
+| **REST API** | ⚠️ Experimental FastAPI + Swagger docs | ❌ | ❌ |
 | **Language support** | 33+ languages | 10+ | 10+ |
 | **License** | MIT | MIT | AGPL |
 
-**Choose rusa if:** you want a CLI-first, cross-platform tool with the widest TTS engine support, Docker/GitHub Action integration, and REST API.
+**Choose rusa if:** you want a CLI-first, cross-platform tool with wide TTS engine support, Docker/GitHub Action integration, and an experimental API path for later automation.
 
 ---
 
@@ -199,7 +211,9 @@ See [`.github/workflows/voiceover.yml`](.github/workflows/voiceover.yml) for a c
 
 ---
 
-## REST API Server
+## REST API Server (Experimental)
+
+> **Warning:** this API path is experimental and intended for local or otherwise trusted environments. The CLI remains the primary supported interface.
 
 ```bash
 # Start server
@@ -218,13 +232,13 @@ Install: `pip install rusa[webui]` or `pip install fastapi uvicorn`
 
 ---
 
-## Native GUI (tkinter)
+## Native GUI (tkinter, Experimental)
 
 ```bash
 python rusa_gui.py
 ```
 
-Desktop interface with notebook tabs (Basic, Audio, Subtitles).
+Desktop interface with notebook tabs (Basic, Audio, Subtitles). Useful for local experiments, but the CLI receives the highest maintenance priority.
 
 ---
 
@@ -287,12 +301,20 @@ Timing:
 # Offline run (no network, no live TTS)
 pytest -q -m 'not slow and not live_tts'
 
+# Fast CLI smoke checks
+pytest -q tests/test_cli_smoke.py
+
 # Live smoke run (requires edge-tts network access)
 pytest -q -m 'live_tts and not slow'
 
 # Full suite
 pytest -q
+
+# Force local fixture generation (requires ffmpeg)
+pytest -q --generate-fixtures
 ```
+
+If generated fixtures are missing and `ffmpeg` is unavailable, pure unit tests still run; only fixture-dependent integration tests are affected.
 
 ---
 
@@ -306,6 +328,20 @@ If you see: `Subtitle codec mov_text ... is not supported`:
 - In `--subs-mode copy`, rusa exits with an error early (no hidden fallback).
 - In `--subs-mode convert`, rusa directly muxes a compatible text format (SRT for `.mkv`).
 
+### Missing dependencies
+
+If you see one of these errors:
+
+- `ffmpeg не найден в PATH`
+- `ffprobe не найден в PATH`
+- `edge-tts не установлен`
+
+then check:
+
+1. `ffmpeg` and `ffprobe` are installed and available in `PATH`
+2. `edge-tts` is installed into the same Python environment as `rusa`
+3. on Windows, prefer `py -m pip install rusa` and verify `ffmpeg.exe` is in `PATH`
+
 ---
 
 ## Documentation
@@ -314,6 +350,9 @@ If you see: `Subtitle codec mov_text ... is not supported`:
 - [implementation_plan](doc/implementation_plan.md) — implementation plan (all phases complete)
 - [TTS engines](doc/TTS_ENGINES.md) — engine comparison, setup, `engines.yaml` format
 - [TTS recommendations](doc/LANGUAGE_RECOMMENDATIONS.md) — voice quality by language
+- [changelog](CHANGELOG.md) — notable project changes
+- [contributing](CONTRIBUTING.md) — project priorities and contribution guidance
+- [release checklist](RELEASE_CHECKLIST.md) — pre-release sanity checklist
 
 ---
 

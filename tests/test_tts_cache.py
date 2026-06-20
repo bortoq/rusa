@@ -64,3 +64,25 @@ def test_step_generate_tts_reuses_cache_without_edge_tts(monkeypatch, tmp_path):
     assert len(second) == 1
     assert os.path.isfile(second[0][1])
     assert Path(second[0][1]).read_bytes() == Path(first[0][1]).read_bytes()
+
+
+def test_step_generate_tts_does_not_silently_truncate_multipart_audio(monkeypatch, tmp_path):
+    """Long text must fail loudly when multipart concat fails.
+
+    Regression: do not fall back to the first generated chunk, because that
+    silently drops the rest of the subtitle text.
+    """
+    monkeypatch.setenv("RUSA_CACHE_DIR", str(tmp_path / "cache"))
+    long_text = ("Sentence. " * 400).strip()  # > MAX_TTS_CHARS → multipart
+    entry = {"idx": 1, "start_ms": 0, "end_ms": 1000, "text": long_text}
+
+    def fake_run(cmd, **kwargs):
+        if cmd and cmd[0] == "ffmpeg":
+            return rusa.subprocess.CompletedProcess(cmd, 1, stdout=b"", stderr=b"concat failed")
+        _write_fake_mp3(cmd[-1], payload=b"ID3part" + b"z" * 200)
+        return rusa.subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit):
+        rusa.step_generate_tts([entry], "ru-RU-SvetlanaNeural", 1, str(tmp_path / "run"))

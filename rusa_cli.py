@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--webui",
         action="store_true",
-        help="Запустить API сервер вместо CLI",
+        help="Экспериментально: запустить API сервер вместо CLI",
     )
     return parser
 

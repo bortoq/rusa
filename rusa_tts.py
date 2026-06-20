@@ -20,6 +20,7 @@ from rusa_shared import (
     ok,
     tqdm,
     tts_cache_path,
+    warn,
 )
 
 
@@ -113,7 +114,8 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
             if generated:
                 part_files.append(part_out)
 
-        if not part_files:
+        if len(part_files) != len(parts):
+            warn(f"  #{idx} не удалось сгенерировать все части TTS ({len(part_files)}/{len(parts)})")
             return idx, None
 
         concat_list = os.path.join(tts_dir, f"batch_{idx:04d}_list.txt")
@@ -128,11 +130,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
         if rc.returncode == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
             copy_into_cache(out, cache_path)
             return idx, out
-        if part_files:
-            shutil.copy2(part_files[0], out)
-            if os.path.getsize(out) > 100:
-                copy_into_cache(out, cache_path)
-                return idx, out
+        warn(f"  #{idx} не удалось склеить TTS-части без потери текста")
         return idx, None
 
     results: list[tuple[int, str]] = []

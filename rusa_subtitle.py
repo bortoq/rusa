@@ -107,26 +107,30 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
 
     target_codes = lang_code_to_ffprobe_codes(target_lang) if target_lang else ["rus", "ru", "russian"]
     info("Извлечение субтитров из видео...")
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "s",
-            "-show_entries",
-            "stream=index:stream_tags=language",
-            "-of",
-            "csv=p=0",
-            video,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
     found = 0
     available = []
-    if result.returncode == 0 and result.stdout.strip():
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "s",
+                "-show_entries",
+                "stream=index:stream_tags=language",
+                "-of",
+                "csv=p=0",
+                video,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+        warn("ffprobe недоступен, пропускаю поиск встроенных субтитров и проверяю внешние .srt рядом с видео")
+    if result and result.returncode == 0 and result.stdout.strip():
         for line in result.stdout.strip().split("\n"):
             if not line.strip():
                 continue
@@ -138,11 +142,15 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
             available.append((idx, lang))
             if lang in target_codes:
                 info(f"  Найден поток субтитров #{idx} ({lang}), извлекаю...")
-                rc = subprocess.run(
-                    ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-map", f"0:{idx}", dest],
-                    check=False,
-                    capture_output=True,
-                )
+                try:
+                    rc = subprocess.run(
+                        ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-map", f"0:{idx}", dest],
+                        check=False,
+                        capture_output=True,
+                    )
+                except OSError:
+                    warn("ffmpeg недоступен, не удалось извлечь встроенные субтитры")
+                    break
                 if rc.returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 0:
                     found = 1
                     break

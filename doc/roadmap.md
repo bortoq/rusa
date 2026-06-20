@@ -2,7 +2,7 @@
 
 ## Project Status
 
-The project is stable after multiple refactoring phases. 205 tests pass on CI (Python 3.9, 3.11, 3.13).
+The project is stable after multiple refactoring phases. Current focus is **CLI-first hardening**: core pipeline, tests, docs, and cross-platform reliability. GUI and REST API are treated as experimental side paths until the CLI is fully polished.
 
 - **PHASE 1** (CLI, cache, subs-mode, timing, exit codes): ✅ Complete
 - **PHASE 2** (Module split): ✅ Complete

@@ -30,9 +30,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install edge-tts tqdm langdetect pytest fastapi uvicorn python-multipart
+          pip install .[webui] pytest
           # httpx2 required by newer starlette.testclient (only on Python >=3.10)
           python -c "import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)" && pip install httpx2 || true
+
+      - name: Compile all Python files
+        run: python -m compileall -q .
 
       - name: Run tests (offline)
         run: pytest -q -m 'not slow and not live_tts'

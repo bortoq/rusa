@@ -115,7 +115,7 @@ def test_no_cache_disables_reads_and_writes(monkeypatch, tmp_path):
     calls = {"tts": 0, "wav": 0}
 
     def fake_run(cmd, **kwargs):
-        if cmd and cmd[0] == "edge-tts":
+        if len(cmd) >= 3 and cmd[1:3] == ["-m", "edge_tts"]:
             calls["tts"] += 1
             _write_fake_mp3(cmd[-1], payload=b"ID3fresh" + b"n" * 200)
             return rusa.subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")

@@ -68,6 +68,18 @@ class TestWhich:
             rusa_shared.which("nonexistent_cmd_xyz")
 
 
+class TestPythonExecutable:
+    def test_python_executable_prefers_sys_executable(self, monkeypatch):
+        monkeypatch.setattr(rusa_shared.sys, "executable", "/custom/python")
+        assert rusa_shared.python_executable() == "/custom/python"
+
+    def test_python_module_cmd_wraps_current_interpreter(self, monkeypatch):
+        monkeypatch.setattr(rusa_shared.sys, "executable", "/custom/python")
+        assert rusa_shared.python_module_cmd("edge_tts", "--help") == [
+            "/custom/python", "-m", "edge_tts", "--help"
+        ]
+
+
 # ── die ──────────────────────────────────────────────────────────────
 
 class TestDie:
