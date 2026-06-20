@@ -99,14 +99,14 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
     dest = os.path.join(tmpdir, "subtitles.srt")
     if srt_file:
         if not os.path.isfile(srt_file):
-            die(f"Файл субтитров не найден: {srt_file}", EXIT_SUBTITLE_ERROR)
-        info(f"Используются субтитры: {srt_file}")
+            die(f"Subtitle file not found: {srt_file}", EXIT_SUBTITLE_ERROR)
+        info(f"Using subtitles: {srt_file}")
         shutil.copy2(srt_file, dest)
-        ok(f"Субтитры: {sum(1 for _ in open(dest, encoding='utf-8'))} строк")
+        ok(f"Subtitles: {sum(1 for _ in open(dest, encoding='utf-8'))} lines")
         return dest
 
     target_codes = lang_code_to_ffprobe_codes(target_lang) if target_lang else ["rus", "ru", "russian"]
-    info("Извлечение субтитров из видео...")
+    info("Extracting subtitles from the video...")
     found = 0
     available = []
     try:
@@ -129,7 +129,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
         )
     except OSError:
         result = None
-        warn("ffprobe недоступен, пропускаю поиск встроенных субтитров и проверяю внешние .srt рядом с видео")
+        warn("ffprobe is unavailable. Skipping embedded subtitle lookup and checking nearby .srt files instead.")
     if result and result.returncode == 0 and result.stdout.strip():
         for line in result.stdout.strip().split("\n"):
             if not line.strip():
@@ -141,7 +141,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
             lang = parts[1].strip().lower()
             available.append((idx, lang))
             if lang in target_codes:
-                info(f"  Найден поток субтитров #{idx} ({lang}), извлекаю...")
+                info(f"  Found subtitle stream #{idx} ({lang}), extracting...")
                 try:
                     rc = subprocess.run(
                         ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-map", f"0:{idx}", dest],
@@ -149,7 +149,7 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
                         capture_output=True,
                     )
                 except OSError:
-                    warn("ffmpeg недоступен, не удалось извлечь встроенные субтитры")
+                    warn("ffmpeg is unavailable, so embedded subtitles could not be extracted")
                     break
                 if rc.returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 0:
                     found = 1
@@ -173,38 +173,38 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
                     break
 
     if not found:
-        avail_str = ", ".join(f"#{idx} ({lang})" for idx, lang in available) if available else "нет потоков"
+        avail_str = ", ".join(f"#{idx} ({lang})" for idx, lang in available) if available else "no subtitle streams"
         if target_lang:
             die(
-                f"Не найдены субтитры на языке '{target_lang}'. Доступные потоки: {avail_str}. "
-                "Укажите -s <file.srt> или --lang другой язык.",
+                f"Could not find subtitles for language '{target_lang}'. Available streams: {avail_str}. "
+                "Pass -s <file.srt> or choose another --lang value.",
                 EXIT_SUBTITLE_ERROR,
             )
         die(
-            f"Не найдены русские субтитры. Доступные потоки: {avail_str}. Укажите -s <file.srt>",
+            f"Could not find Russian subtitles. Available streams: {avail_str}. Pass -s <file.srt>.",
             EXIT_SUBTITLE_ERROR,
         )
-    ok(f"Субтитры: {sum(1 for _ in open(dest, encoding='utf-8'))} строк")
+    ok(f"Subtitles: {sum(1 for _ in open(dest, encoding='utf-8'))} lines")
     return dest
 
 
 def step_sync_alass(video: str, subs_path: str, tmpdir: str) -> str:
     if not shutil.which("alass"):
-        warn("alass не найден, синхронизация пропущена")
+        warn("alass was not found. Subtitle sync is skipped.")
         return subs_path
-    info("Синхронизация субтитров через alass...")
+    info("Synchronizing subtitles with alass...")
     synced = os.path.join(tmpdir, "synced.srt")
     rc = subprocess.run(["alass", video, subs_path, synced], check=False, capture_output=True)
     if rc.returncode == 0 and os.path.isfile(synced) and os.path.getsize(synced) > 0:
         shutil.copy2(synced, subs_path)
-        ok("Субтитры синхронизированы")
+        ok("Subtitles synchronized")
     else:
-        warn("alass не удался, используются исходные субтитры")
+        warn("alass failed. Using the original subtitles.")
     return subs_path
 
 
 def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None) -> tuple[list[Entry], int]:
-    info("Парсинг субтитров...")
+    info("Parsing subtitles...")
     with open(subs_path, "r", encoding="utf-8") as handle:
         subs = handle.read().lstrip("\ufeff")
     blocks = re.split(r"\n\s*\n", subs.strip())
@@ -241,12 +241,12 @@ def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None)
         hi = range_to or len(entries)
         entries = [entry for entry in entries if lo <= entry["idx"] <= hi]
         if not entries:
-            die(f"Нет субтитров в диапазоне {lo}–{hi}", EXIT_SUBTITLE_ERROR)
+            die(f"No subtitles were found in range {lo}-{hi}", EXIT_SUBTITLE_ERROR)
         for i, entry in enumerate(entries, 1):
             entry["idx"] = i
 
     count = len(entries)
-    ok(f"{count} субтитров" + (f" (диапазон {lo}–{hi})" if range_from or range_to else ""))
+    ok(f"{count} subtitles" + (f" (range {lo}-{hi})" if range_from or range_to else ""))
     return entries, count
 
 

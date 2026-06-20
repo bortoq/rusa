@@ -112,16 +112,16 @@ def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[st
         if copy_supported is None:
             codec_label = ", ".join(source_subtitle_codecs) if source_subtitle_codecs else "unknown"
             die(
-                f"Не удалось надёжно проверить совместимость субтитров codec={codec_label} "
-                f"для контейнера '{Path(output).suffix or output}' при --subs-mode copy. "
-                "Используйте --subs-mode auto, --subs-mode convert или --subs-mode drop.",
+                f"Could not reliably verify subtitle compatibility for codec={codec_label} "
+                f"with container '{Path(output).suffix or output}' in --subs-mode copy. "
+                "Use --subs-mode auto, --subs-mode convert, or --subs-mode drop.",
                 EXIT_SUBTITLE_ERROR,
             )
         if not copy_supported:
             codec_label = ", ".join(source_subtitle_codecs) if source_subtitle_codecs else "unknown"
             die(
-                f"Нельзя скопировать субтитры codec={codec_label} в контейнер '{Path(output).suffix or output}' "
-                f"при --subs-mode copy. Используйте --subs-mode convert или --subs-mode drop.",
+                f"Cannot copy subtitles with codec={codec_label} into container '{Path(output).suffix or output}' "
+                "in --subs-mode copy. Use --subs-mode convert or --subs-mode drop.",
                 EXIT_SUBTITLE_ERROR,
             )
         return ["copy"], source_subtitle_codecs
@@ -129,8 +129,8 @@ def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[st
     if subs_mode == "convert":
         if not convert_codec:
             die(
-                f"Для контейнера '{Path(output).suffix or output}' нет поддерживаемого текстового формата "
-                "для --subs-mode convert.",
+                f"No supported text subtitle format is available for container '{Path(output).suffix or output}' "
+                "in --subs-mode convert.",
                 EXIT_SUBTITLE_ERROR,
             )
         return [convert_codec], source_subtitle_codecs
@@ -236,7 +236,7 @@ def step_mix_output(
     voiceover_lang: str = "rus",
     subs_mode: str = DEFAULT_SUBS_MODE,
 ) -> None:
-    info("Микс...")
+    info("Mixing audio...")
     mixed = os.path.join(tmpdir, "mixed.wav")
     filter_expr = (
         f"[1:a]volume={orig_vol}[orig];"
@@ -251,31 +251,30 @@ def step_mix_output(
 
     if rc.returncode != 0:
         err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
-        die(f"Микс не удался: {err_text[:500]}")
+        die(f"Audio mix failed: {err_text[:500]}")
 
     norm_applied = False
     if normalize:
-        info(f"Нормализация ({normalize})...")
+        info(f"Normalizing audio ({normalize})...")
         norm_in = mixed
         norm_out = os.path.join(tmpdir, "normalized.wav")
         if normalize == "fine":
             norm_applied = _run_loudnorm(norm_in, norm_out)
             if not norm_applied:
-                warn("loudnorm не удался, пробую dynaudnorm...")
+                warn("loudnorm failed, trying dynaudnorm...")
                 norm_applied = _run_dynaudnorm(norm_in, norm_out)
         else:
             norm_applied = _run_dynaudnorm(norm_in, norm_out)
         if norm_applied:
-            ok("Нормализация выполнена")
+            ok("Normalization complete")
         else:
-            warn("Нормализация не удалась, продолжаю без неё")
+            warn("Normalization failed. Continuing without it.")
 
     codec_info = _get_codec(audio_fmt, audio_bitrate)
     if codec_info is None:
         known = ", ".join(sorted(CODEC_MAP))
         die(
-            f"Неизвестный формат аудио: {audio_fmt}. "
-            f"Доступные форматы: {known}",
+            f"Unknown audio format: {audio_fmt}. Available formats: {known}",
             EXIT_CODEC_ERROR,
         )
     ffmpeg_codec, bitrate_arg, ext = codec_info
@@ -289,13 +288,13 @@ def step_mix_output(
             alt_bitrate_default = CODEC_MAP[alt_name][3]
             if _check_ffmpeg_codec(alt_codec_name):
                 alt_suggestions.append(f"--{alt_name} {alt_bitrate_default}")
-        suggestions = ", ".join(alt_suggestions) if alt_suggestions else "нет известных альтернатив"
+        suggestions = ", ".join(alt_suggestions) if alt_suggestions else "no known alternatives"
         die(
-            f"Кодек {ffmpeg_codec} недоступен в вашей сборке ffmpeg.\nПопробуйте другой формат: {suggestions}",
+            f"Codec {ffmpeg_codec} is not available in your ffmpeg build.\nTry another format: {suggestions}",
             EXIT_CODEC_ERROR,
         )
 
-    info(f"Кодирование: {ffmpeg_codec} {bitrate_arg}...")
+    info(f"Encoding: {ffmpeg_codec} {bitrate_arg}...")
     source = norm_out if norm_applied else mixed
 
     if audio_only:
@@ -319,16 +318,16 @@ def step_mix_output(
             remaining_modes = subtitle_modes[index + 1:]
             if subtitle_mode == "copy" and remaining_modes:
                 if _subtitle_copy_not_supported(last_err_text, output):
-                    warn("Копирование субтитров в этот контейнер не поддерживается, пробую перекодировать их в SRT")
+                    warn("Subtitle copy is not supported for this container. Trying subtitle conversion instead.")
                     continue
                 if source_subtitle_codec:
-                    warn("Не удалось скопировать субтитры как есть, пробую совместимый текстовый формат")
+                    warn("Could not copy subtitles as-is. Trying a compatible text subtitle format instead.")
                     continue
                 if len(subtitle_modes) > 1:
-                    warn("Не удалось скопировать субтитры как есть, пробую совместимый текстовый формат")
+                    warn("Could not copy subtitles as-is. Trying a compatible text subtitle format instead.")
                     continue
             if subtitle_mode != "drop" and remaining_modes == ["drop"]:
-                warn("Не удалось сохранить субтитры в выходном контейнере, пробую сохранить файл без них")
+                warn("Could not keep subtitles in the output container. Trying again without subtitles.")
                 continue
             break
         else:
@@ -336,10 +335,10 @@ def step_mix_output(
 
     if rc.returncode != 0:
         err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
-        die(f"Кодирование не удалось: {err_text[:500]}")
+        die(f"Encoding failed: {err_text[:500]}")
 
     if os.path.isfile(output):
-        ok(f"Готово: {output}")
-        print(f"  Размер: {os.path.getsize(output) / 1024 / 1024:.0f} MB")
+        ok(f"Done: {output}")
+        print(f"  Size: {os.path.getsize(output) / 1024 / 1024:.0f} MB")
     else:
-        die(f"Выходной файл не создан: {output}")
+        die(f"Output file was not created: {output}")

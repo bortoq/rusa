@@ -288,7 +288,7 @@ def die(msg: str, code: int = EXIT_RUNTIME_ERROR) -> None:
 def which(cmd: str) -> str:
     exe = shutil.which(cmd)
     if not exe:
-        die(f"{cmd} не найден в PATH", EXIT_DEPENDENCY_ERROR)
+        die(f"{cmd} was not found in PATH", EXIT_DEPENDENCY_ERROR)
     return exe
 
 
@@ -303,7 +303,7 @@ def python_executable() -> str:
     for candidate in candidates:
         if candidate:
             return candidate
-    die("Python interpreter не найден", EXIT_DEPENDENCY_ERROR)
+    die("Python interpreter was not found", EXIT_DEPENDENCY_ERROR)
 
 
 def python_module_cmd(module: str, *args: str) -> list[str]:
@@ -319,11 +319,11 @@ def shell(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     except subprocess.CalledProcessError as exc:
         if exc.stderr:
             sys.stderr.write(exc.stderr.decode("utf-8", errors="replace"))
-        die(f"Команда {' '.join(cmd)} завершилась с кодом {exc.returncode}")
+        die(f"Command {' '.join(cmd)} exited with status {exc.returncode}")
     except FileNotFoundError:
-        die(f"Команда не найдена: {cmd[0]}", EXIT_DEPENDENCY_ERROR)
+        die(f"Command not found: {cmd[0]}", EXIT_DEPENDENCY_ERROR)
     except Exception as exc:  # pragma: no cover
-        die(f"Ошибка выполнения {' '.join(cmd)}: {exc}")
+        die(f"Command failed: {' '.join(cmd)}: {exc}")
 
 
 def shell_ok(cmd: list[str], **kwargs) -> bool:
@@ -604,7 +604,7 @@ class EdgeTtsBackend(TtsBackend):
             check=False, capture_output=True, text=True,
         )
         if rc.returncode == 0 and voice not in rc.stdout:
-            return f"Голос '{voice}' отсутствует в списке edge-tts --list-voices. Возможно, он удалён Microsoft."
+            return f"Voice '{voice}' is not present in edge-tts --list-voices. Microsoft may have removed or renamed it."
         return None
 
     @staticmethod

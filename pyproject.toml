@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rusa"
-version = "1.0.0"
+version = "0.1.0"
 description = "CLI tool for AI voiceover translation from subtitles"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,12 +32,8 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
-[project.optional-dependencies]
-webui = ["fastapi>=0.100", "uvicorn>=0.20", "python-multipart>=0.0.5"]
-
 [project.scripts]
 rusa = "rusa:main"
-rusa-gui = "rusa_gui:main"
 
 [project.urls]
 Homepage = "https://github.com/bortoq/rusa"
@@ -47,7 +43,6 @@ Changelog = "https://github.com/bortoq/rusa/blob/master/CHANGELOG.md"
 BugTracker = "https://github.com/bortoq/rusa/issues"
 
 [tool.setuptools]
-py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts", "rusa_gui"]
-packages = ["webui"]
+py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
 include-package-data = true
 license-files = ["LICENSE"]

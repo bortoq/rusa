@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 __all__ = ['step_assemble', 'step_convert_wav', 'list_voices', '_check_ffmpeg_codec', '_get_codec', 'step_mix_output', 'CODEC_MAP', 'DEFAULT_ORIG_VOL', 'DEFAULT_SPEED', 'DEFAULT_SUBS_MODE', 'DEFAULT_THREADS', 'DEFAULT_TTS_VOL', 'DEFAULT_VOICE', 'EXIT_CODEC_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_RUNTIME_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_USAGE_ERROR', 'HAS_LANGDETECT', 'HAS_TQDM', 'LANG_VOICE_MAP', 'WAV_BPF', 'WAV_CHANNELS', 'WAV_FRAMERATE', 'WAV_HEADER_SIZE', 'WAV_SAMPLEWIDTH', 'clear_cache', 'copy_into_cache', 'die', 'err', 'file_sha256', 'info', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'ok', 'print_cache_stats', 'print_timing_summary', 'tts_cache_dir', 'voice_to_lang_code', 'wav_cache_dir', 'warn', 'which', 'detect_language_from_srt', 'step_extract_subtitles', 'step_parse_srt', 'step_sync_alass', '_split_text', 'step_generate_tts', 'main']
-"""rusa — Russian Voiceover for Movies.
+"""rusa — CLI voiceover for movies and other videos.
 
 Public API: all commonly-used names are re-exported from submodules.
 Tests and external code should access everything through ``rusa.*``.
@@ -231,29 +231,13 @@ def main(args: argparse.Namespace | None = None) -> None:
 
         rusa_shared._CACHE_DISABLED = bool(args.no_cache)
 
-        if args.webui:
-            # Launch API server instead of CLI processing
-            _root = os.path.dirname(os.path.abspath(__file__))
-            if _root not in sys.path:
-                sys.path.insert(0, _root)
-            try:
-                from webui import run
-                run()
-            except ImportError as exc:
-                die(
-                    f"API server не доступен: {exc}. "
-                    "Установите: pip install fastapi uvicorn",
-                    EXIT_DEPENDENCY_ERROR,
-                )
-            sys.exit(0)
-
         if not args.video:
             _get_parser().print_help()
             sys.exit(0)
 
         video = os.path.realpath(args.video)
         if not os.path.isfile(video):
-            die(f"Файл не найден: {video}")
+            die(f"File not found: {video}")
 
         which("ffmpeg")
         which("ffprobe")
@@ -267,13 +251,13 @@ def main(args: argparse.Namespace | None = None) -> None:
             engine_name = args.engine
             backend_cls = BACKEND_REGISTRY.get(engine_name)
             if backend_cls is None:
-                die(f"Неизвестный TTS-движок: {engine_name}", EXIT_USAGE_ERROR)
+                die(f"Unknown TTS engine: {engine_name}", EXIT_USAGE_ERROR)
             if not backend_cls.is_available():
-                die(f"Движок '{engine_name}' не найден в PATH", EXIT_DEPENDENCY_ERROR)
+                die(f"TTS engine '{engine_name}' was not found in PATH", EXIT_DEPENDENCY_ERROR)
         else:
             backend_cls = rusa_shared.EdgeTtsBackend
             if not backend_cls.is_available():
-                die("edge-tts не установлен (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
+                die("edge-tts is not installed (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
 
         audio_fmt = "opus"
         audio_bitrate = "64"
@@ -287,14 +271,14 @@ def main(args: argparse.Namespace | None = None) -> None:
 
         if backend_cls.name == "custom" and not args.voice:
             die(
-                "Для --tts-cmd необходимо явно указать --voice (голос произвольного TTS-движка).",
+                "--tts-cmd requires an explicit --voice value.",
                 EXIT_USAGE_ERROR,
             )
 
         target_lang = None
         if args.lang:
             target_lang = normalize_lang_code(args.lang)
-            info(f"Язык субтитров: {target_lang}")
+            info(f"Subtitle language: {target_lang}")
         elif args.voice and backend_cls.name != "custom":
             target_lang = backend_cls.lang_from_voice(args.voice)
 
@@ -304,8 +288,8 @@ def main(args: argparse.Namespace | None = None) -> None:
             default_voice = backend_cls.get_default_voice(target_lang)
             if default_voice is None:
                 die(
-                    f"Язык '{target_lang}' не поддерживается бэкендом '{backend_cls.name}'. "
-                    f"Укажите --voice явно.",
+                    f"Language '{target_lang}' is not supported by backend '{backend_cls.name}'. "
+                    "Please pass --voice explicitly.",
                     EXIT_USAGE_ERROR,
                 )
             voice = default_voice
@@ -340,34 +324,34 @@ def main(args: argparse.Namespace | None = None) -> None:
 
         if os.path.isfile(output):
             if args.overwrite:
-                warn(f"Выходной файл существует: {output} (перезапись)")
+                warn(f"Output file already exists: {output} (will overwrite)")
             else:
                 die(
-                    f"Выходной файл существует: {output}. "
-                    "Используйте --overwrite для перезаписи или -o для другого имени.",
+                    f"Output file already exists: {output}. "
+                    "Use --overwrite to replace it, or -o to choose another name.",
                     EXIT_USAGE_ERROR,
                 )
 
-        sync_str = "вкл" if args.sync else "выкл"
+        sync_str = "on" if args.sync else "off"
         codec_info = _get_codec(audio_fmt, audio_bitrate)
         if codec_info is None:
             codec_name, codec_bit = audio_fmt, f"{audio_bitrate}k"
         else:
             codec_name, codec_bit = codec_info[0], codec_info[1]
         info(
-            f"Синхронизация: {sync_str} | Голос: {voice} | Кодек: {codec_name} {codec_bit} | "
-            f"Темп: {args.speed}x | Оригинал: {args.orig_vol} | TTS: {args.tts_vol}"
+            f"Sync: {sync_str} | Voice: {voice} | Codec: {codec_name} {codec_bit} | "
+            f"Speed: {args.speed}x | Original: {args.orig_vol} | TTS: {args.tts_vol}"
         )
         if normalize:
-            info(f"Нормализация: {normalize}")
+            info(f"Normalization: {normalize}")
         if args.no_cache:
-            info("Кэш: выкл")
+            info("Cache: off")
         if args.range_from or args.range_to:
-            info(f"Диапазон субтитров: {args.range_from or 1}–{args.range_to or '...'}")
+            info(f"Subtitle range: {args.range_from or 1}-{args.range_to or '...'}")
         if args.audio_only:
-            info("Режим: только аудио")
+            info("Mode: audio only")
         elif args.subs_mode != DEFAULT_SUBS_MODE:
-            info(f"Субтитры: {args.subs_mode}")
+            info(f"Subtitles: {args.subs_mode}")
 
         timings: list[tuple[str, float]] = []
         tmpdir = tempfile.mkdtemp(prefix="rusa_")
@@ -377,7 +361,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             if args.voice is None and args.lang is None:
                 if backend_cls.name == "custom":
                     die(
-                        "Для --tts-cmd укажите --voice или --lang для определения языка субтитров.",
+                        "For --tts-cmd, pass either --voice or --lang so rusa can resolve the subtitle language.",
                         EXIT_USAGE_ERROR,
                     )
                 detected = detect_language_from_srt(subs_path)
@@ -385,12 +369,12 @@ def main(args: argparse.Namespace | None = None) -> None:
                     # detected is an edge-tts voice name; extract lang, find voice for this backend
                     lang_code = voice_to_lang_code(detected)
                     voice = backend_cls.get_default_voice(lang_code) or detected
-                    info(f"Язык определён: {lang_code} → голос: {voice}")
+                    info(f"Detected subtitle language: {lang_code} -> voice: {voice}")
                 else:
                     if HAS_LANGDETECT:
-                        warn("Не удалось определить язык субтитров, использую голос по умолчанию")
+                        warn("Could not detect subtitle language. Using the default voice.")
                     else:
-                        warn("langdetect не установлен (pip install langdetect), использую голос по умолчанию")
+                        warn("langdetect is not installed (pip install langdetect). Using the default voice.")
             if args.sync:
                 subs_path = step_sync_alass(video, subs_path, tmpdir)
             entries, count = step_parse_srt(subs_path, args.range_from, args.range_to)
@@ -398,9 +382,9 @@ def main(args: argparse.Namespace | None = None) -> None:
                 preview_count = max(1, args.preview)
                 entries = entries[:preview_count]
                 count = len(entries)
-                info(f"Режим preview: первые {count} субтитров")
+                info(f"Preview mode: first {count} subtitles")
             if count == 0:
-                die("Не удалось распарсить ни одного субтитра из SRT. Проверьте формат файла.", EXIT_SUBTITLE_ERROR)
+                die("Could not parse any subtitle entries from the SRT file. Please check the file format.", EXIT_SUBTITLE_ERROR)
             if args.dry_run:
                 _print_dry_run(args, backend_cls, voice, target_lang, output, entries)
                 return
@@ -408,7 +392,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 merged_count = len(entries)
                 entries = step_merge_srt_entries(entries)
                 if len(entries) < merged_count:
-                    info(f"Склеено {merged_count - len(entries)} разорванных реплик")
+                    info(f"Merged {merged_count - len(entries)} split subtitle lines")
             timings.append(("subtitles", time.perf_counter() - started))
 
             started = time.perf_counter()
@@ -450,7 +434,7 @@ def main(args: argparse.Namespace | None = None) -> None:
             if not args.keep_temp:
                 shutil.rmtree(tmpdir, ignore_errors=True)
             elif os.path.isdir(tmpdir):
-                info(f"Временные файлы: {tmpdir}")
+                info(f"Temporary files kept at: {tmpdir}")
     finally:
         rusa_shared._CACHE_DISABLED = prev_cache_disabled
 

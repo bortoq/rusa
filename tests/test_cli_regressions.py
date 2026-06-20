@@ -455,7 +455,7 @@ def test_step_mix_output_subs_mode_copy_fails_explicitly_when_ffprobe_cannot_ver
         )
 
     captured = capsys.readouterr()
-    assert "Не удалось надёжно проверить совместимость" in captured.err
+    assert "Could not reliably verify subtitle compatibility" in captured.err
     mux_cmds = [cmd for cmd in calls if "-metadata:s:a:1" in cmd]
     assert mux_cmds == []
 

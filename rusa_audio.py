@@ -28,7 +28,7 @@ from rusa_shared import (
 
 
 def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str, threads: int = 1) -> list[tuple[int, str, float]]:
-    info(f"Конвертация MP3 → WAV + atempo={speed}x...")
+    info(f"Converting MP3 -> WAV + atempo={speed}x...")
     wav_dir = os.path.join(tmpdir, "wav")
     os.makedirs(wav_dir, exist_ok=True)
     results: list[tuple[int, str, float]] = []
@@ -102,7 +102,7 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str
                 copy_into_cache(wav_path, cache_path)
                 return (idx, wav_path, 0)
         else:
-            warn(f"  #{idx} не удалось конвертировать")
+            warn(f"  #{idx} could not be converted")
         return None
 
     total = len(tts_results)
@@ -128,7 +128,7 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str
 
 def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]], tmpdir: str) -> str:
     out_path = os.path.join(tmpdir, "voiceover.wav")
-    info("Сборка voiceover...")
+    info("Assembling voiceover...")
     wav_map: dict[int, tuple[str, float]] = {}
     for idx, path, dur in wav_results:
         wav_map[idx] = (path, dur)
@@ -141,10 +141,10 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
                 continue
             segments.append({"start_ms": entry["start_ms"], "duration_ms": dur, "path": path})
     if not segments:
-        die("Нет сегментов для сборки")
+        die("No audio segments are available for assembly")
     segments.sort(key=lambda seg: seg["start_ms"])
     max_end_ms = max(seg["start_ms"] + seg["duration_ms"] for seg in segments)
-    print(f"  Сегментов: {len(segments)}, макс. длит.: {max_end_ms / 1000:.0f}s")
+    print(f"  Segments: {len(segments)}, max duration: {max_end_ms / 1000:.0f}s")
     cur_frame = 0
     overlaps = 0
     chunk = 10 * 1024 * 1024
@@ -197,9 +197,9 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
 
     if overlaps:
         pct = overlaps * 100 // len(segments)
-        print(f"  Перекрытий: {overlaps} ({pct}%)")
+        print(f"  Overlaps: {overlaps} ({pct}%)")
         if pct > 20:
-            warn("Много перекрытий. Попробуйте --speed больше или --voice с более быстрым произношением")
+            warn("Many overlaps were detected. Try a higher --speed or a faster voice.")
     print(f"  Voiceover: {os.path.getsize(out_path) / 1024 / 1024:.0f} MB")
-    ok("Voiceover собрано")
+    ok("Voiceover assembled")
     return out_path

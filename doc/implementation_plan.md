@@ -1,38 +1,31 @@
-# rusa Implementation Plan — ALL PHASES COMPLETE ✅
+# rusa Implementation Plan — Historical Note
 
-> **This document is historical.** All Phase 1, 2, and 3 tasks have been completed.
-> The Gradio→FastAPI migration is also complete.
-> See [doc/roadmap.md](roadmap.md) for remaining items.
+This file is kept as a short historical note.
 
-The original plan covered three phases:
+The main refactoring phases are complete:
 
-1. **Phase 1: User-facing behaviour** — `--subs-mode`, WAV cache, cache management CLI, timing summary, exit codes, test split
-2. **Phase 2: Module split** — monolithic `rusa.py` → 8 focused modules
-3. **Phase 3: Assembly memory/I/O redesign** — streaming assembly, single write pass
+1. **Phase 1** — user-facing CLI behavior (`--subs-mode`, cache, timing, exit codes)
+2. **Phase 2** — module split (`rusa.py` into focused modules)
+3. **Phase 3** — lower-memory assembly with a single write pass
 
-All phases are fully implemented and tested (205 tests passing on CI, Python 3.9–3.13).
+## Current file map
 
-## File Map (current)
-
-```
+```text
 rusa/
 ├── rusa.py              # CLI entrypoint
-├── rusa_cli.py          # Argument parser + list_voices
-├── rusa_subtitle.py     # SRT: extract, detect, parse, sync, merge
+├── rusa_cli.py          # Argument parser + voice listing
+├── rusa_subtitle.py     # Subtitle extraction, parsing, sync, merge
 ├── rusa_tts.py          # TTS generation
-├── rusa_audio.py        # MP3→WAV + assembly
+├── rusa_audio.py        # MP3->WAV conversion + assembly
 ├── rusa_mux.py          # Mix, mux, codecs
-├── rusa_engines.py      # TTS backend registry
-├── rusa_shared.py       # Constants, cache, backends, terminal
-├── rusa_gui.py          # Native tkinter GUI
-├── webui/
-│   ├── server.py        # FastAPI REST API
-│   ├── config.py        # Shared config
-│   └── utils.py         # build_args(), pick_output_file()
-├── engines.yaml          # Declarative engine definitions
-├── README.md             # Project documentation
+├── rusa_engines.py      # TTS engine registry
+├── rusa_shared.py       # Shared constants, cache, backends, helpers
+├── engines.yaml         # Declarative engine definitions
+├── README.md            # Main project documentation
 └── doc/
-    ├── roadmap.md        # Current roadmap & remaining items
-    ├── implementation_plan.md  # This file (historical)
-    └── LANGUAGE_RECOMMENDATIONS.md  # TTS recommendations
+    ├── roadmap.md
+    ├── implementation_plan.md
+    └── LANGUAGE_RECOMMENDATIONS.md
 ```
+
+For the current project direction, see [roadmap.md](roadmap.md).

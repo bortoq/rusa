@@ -50,12 +50,12 @@ def _tts_generate(text: str, voice: str, out: str, backend: str) -> int:
     """Generate TTS audio using the specified backend. Returns 0 on success."""
     backend_cls = BACKEND_REGISTRY.get(backend)
     if backend_cls is None:
-        die(f"Неизвестный TTS бэкенд: {backend}")
+        die(f"Unknown TTS backend: {backend}")
     return backend_cls.generate(text, voice, out)
 
 
 def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str, backend: str = "edge") -> list[tuple[int, str]]:
-    info(f"Генерация TTS ({len(entries)} файлов, {threads} потоков)...")
+    info(f"Generating TTS ({len(entries)} files, {threads} threads)...")
     tts_dir = os.path.join(tmpdir, "tts")
     os.makedirs(tts_dir, exist_ok=True)
     max_retries = 3
@@ -115,7 +115,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
                 part_files.append(part_out)
 
         if len(part_files) != len(parts):
-            warn(f"  #{idx} не удалось сгенерировать все части TTS ({len(part_files)}/{len(parts)})")
+            warn(f"  #{idx} could not generate all TTS parts ({len(part_files)}/{len(parts)})")
             return idx, None
 
         concat_list = os.path.join(tts_dir, f"batch_{idx:04d}_list.txt")
@@ -130,7 +130,7 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
         if rc.returncode == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
             copy_into_cache(out, cache_path)
             return idx, out
-        warn(f"  #{idx} не удалось склеить TTS-части без потери текста")
+        warn(f"  #{idx} could not concatenate TTS parts without losing text")
         return idx, None
 
     results: list[tuple[int, str]] = []
@@ -156,5 +156,5 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
     results.sort(key=lambda item: item[0])
     ok(f"TTS: {len(results)}/{len(entries)}")
     if not results:
-        die("Не удалось сгенерировать ни одного TTS-файла")
+        die("Could not generate any TTS files")
     return results

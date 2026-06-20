@@ -137,12 +137,12 @@ class ExternalTtsBackend(TtsBackend):
     @classmethod
     def validate_voice(cls, voice: str) -> str | None:
         if not voice:
-            return "Голос не указан"
+            return "Voice is not set"
         available = {v for v, _ in cls.list_voices()}
         if available and voice not in available:
             return (
-                f"Голос '{voice}' отсутствует в списке доступных для движка '{cls.name}'. "
-                f"Доступные: {', '.join(sorted(available))}"
+                f"Voice '{voice}' is not listed for engine '{cls.name}'. "
+                f"Available: {', '.join(sorted(available))}"
             )
         return None
 
@@ -178,7 +178,7 @@ class ExternalTtsBackend(TtsBackend):
 
 def _load_yaml(path: str) -> dict:
     if not HAS_YAML:
-        raise ImportError("PyYAML не установлен (pip install pyyaml)")
+        raise ImportError("PyYAML is not installed (pip install pyyaml)")
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 

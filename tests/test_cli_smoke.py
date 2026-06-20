@@ -77,7 +77,7 @@ def test_cli_help_smoke() -> None:
 def test_cli_version_smoke() -> None:
     result = _run_cli("--version")
     assert result.returncode == 0
-    assert "rusa 1.0.0" in result.stdout
+    assert "rusa 0.1.0" in result.stdout
 
 
 def test_cli_voice_list_default_engine_smoke(tmp_path: Path) -> None:
@@ -99,7 +99,7 @@ def test_cli_missing_video_fails_cleanly(tmp_path: Path) -> None:
     missing = tmp_path / "missing.mkv"
     result = _run_cli(str(missing))
     assert result.returncode == 1
-    assert "Файл не найден" in result.stderr
+    assert "File not found" in result.stderr
 
 
 def test_cli_cache_stats_smoke(tmp_path: Path) -> None:
@@ -239,7 +239,7 @@ def test_cli_invalid_engine_fails_cleanly(tmp_path: Path) -> None:
     video.write_bytes(b"fake video")
     result = _run_cli("--engine", "nope", str(video), env=env)
     assert result.returncode == 2
-    assert "Неизвестный TTS-движок" in result.stderr
+    assert "Unknown TTS engine" in result.stderr
 
 
 
@@ -279,7 +279,7 @@ def test_cli_subs_mode_drop_is_visible_in_output(tmp_path: Path) -> None:
         env=env,
     )
     assert result.returncode == 0
-    assert "Субтитры: drop" in result.stdout
+    assert "Subtitles: drop" in result.stdout
 
 
 
