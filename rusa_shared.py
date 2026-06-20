@@ -269,7 +269,7 @@ def info(msg: str) -> None:
 
 
 def ok(msg: str) -> None:
-    print(f"{GREEN}\u2713{NC} {msg}")
+    print(f"{GREEN}[ok]{NC} {msg}")
 
 
 def warn(msg: str) -> None:
@@ -277,7 +277,7 @@ def warn(msg: str) -> None:
 
 
 def err(msg: str) -> None:
-    print(f"{RED}\u2717{NC} {msg}", file=sys.stderr)
+    print(f"{RED}[fail]{NC} {msg}", file=sys.stderr)
 
 
 def die(msg: str, code: int = EXIT_RUNTIME_ERROR) -> None:
