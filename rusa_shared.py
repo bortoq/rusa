@@ -285,6 +285,23 @@ def die(msg: str, code: int = EXIT_RUNTIME_ERROR) -> None:
     sys.exit(code)
 
 
+def _configure_stdio() -> None:
+    """Set stdout/stderr to replace unencodable chars instead of crashing.
+
+    On Windows, pipes (e.g. captured output in CI) often use cp1252/cp866
+    which cannot represent arbitrary Unicode.  Without this, printing subtitle
+    text or user-supplied data containing non-ASCII characters raises
+    UnicodeEncodeError.  errors="replace" silently substitutes ? for any
+    character that cannot be encoded in the current console encoding.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(errors="replace")
+        except Exception:
+            pass
+
+
 def which(cmd: str) -> str:
     exe = shutil.which(cmd)
     if not exe:

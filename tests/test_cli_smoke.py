@@ -343,3 +343,31 @@ def test_cli_missing_ffmpeg_fails_with_dependency_exit_code(tmp_path: Path) -> N
 
 
 
+
+
+def test_cli_dry_run_non_ascii_sidecar_no_crash(tmp_path: Path) -> None:
+    """Non-ASCII subtitle text must not crash on any platform.
+
+    Regression test for Windows ``UnicodeEncodeError`` with limited console
+    encodings (cp1252/cp866).  Characters outside the Latin-1 range (CJK,
+    emoji, etc.) must be silently replaced rather than raising an error.
+    """
+    env = _make_fake_runtime(tmp_path)
+    video = tmp_path / "movie.mkv"
+    sidecar = tmp_path / "movie.ja.srt"
+    video.write_bytes(b"fake video")
+    sidecar.write_text(
+        "1\n00:00:01,000 --> 00:00:02,000\nこんにちは世界\n\n"
+        "2\n00:00:03,000 --> 00:00:04,000\n\u2603\u2601\ufe0f\n",  # snowman + cloud + emoji
+        encoding="utf-8",
+    )
+
+    result = _run_cli(
+        "--dry-run",
+        "--lang", "ja",
+        str(video),
+        env=env,
+    )
+    assert result.returncode == 0
+    assert "Language: ja" in result.stdout
+    assert "Subtitles: 2" in result.stdout
