@@ -1,6 +1,11 @@
 # rusa — AI Voiceover for Movies
 
 [![PyPI version](https://img.shields.io/pypi/v/rusa.svg)](https://pypi.org/project/rusa/)
+[![Python versions](https://img.shields.io/pypi/pyversions/rusa.svg)](https://pypi.org/project/rusa/)
+[![License](https://img.shields.io/pypi/l/rusa.svg)](https://github.com/bortoq/rusa/blob/master/LICENSE)
+[![CI status](https://github.com/bortoq/rusa/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/bortoq/rusa/actions/workflows/test.yml)
+[![PyPI downloads](https://img.shields.io/pypi/dm/rusa.svg)](https://pypi.org/project/rusa/)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-Ruff-261230.svg?logo=ruff)](https://github.com/astral-sh/ruff)
 
 **rusa** is a CLI tool that creates a translated voiceover track from subtitles and mixes it into a video or exports audio-only output.
 
