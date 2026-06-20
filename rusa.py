@@ -213,6 +213,10 @@ def main(args: argparse.Namespace | None = None) -> None:
     prev_cache_disabled = _CACHE_DISABLED
 
     _save_terminal()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(errors="replace")
     atexit.register(_restore_terminal)
     import threading
     if threading.current_thread() is threading.main_thread():
