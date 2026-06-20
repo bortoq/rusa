@@ -265,7 +265,7 @@ def normalize_lang_code(code: str) -> str:
 
 
 def info(msg: str) -> None:
-    print(f"{CYAN}\u25b6{NC} {msg}")
+    print(f"{CYAN}>{NC} {msg}")
 
 
 def ok(msg: str) -> None:
@@ -273,7 +273,7 @@ def ok(msg: str) -> None:
 
 
 def warn(msg: str) -> None:
-    print(f"{YELLOW}\u26a0{NC} {msg}")
+    print(f"{YELLOW}!{NC} {msg}")
 
 
 def err(msg: str) -> None:
