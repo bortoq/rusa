@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """Shared constants, optional deps, utilities, and cache helpers for rusa."""
-__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "_save_terminal", "_restore_terminal"]
+__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "print_doctor_report", "_save_terminal", "_restore_terminal"]
 
 import hashlib
 import os
@@ -13,6 +13,7 @@ import sys
 import time
 import atexit
 import signal
+import platform
 
 try:
     import termios
@@ -514,6 +515,72 @@ def print_timing_summary(stage_durations: list[tuple[str, float]]) -> None:
     print("Timing:")
     for name, seconds in stage_durations:
         print(f"  {name}: {seconds:.1f}s")
+
+
+
+def _doctor_line(name: str, status: str, details: str) -> None:
+    """Print a single line of the doctor report with aligned columns."""
+    print(f"{name:<14} {status:<4} {details}")
+
+
+def print_doctor_report() -> None:
+    """Print a local environment report and exit.
+
+    Exit code is 0 when required runtime dependencies are available, or
+    EXIT_DEPENDENCY_ERROR when one or more required items are missing.
+    """
+    print("rusa doctor")
+    print("-----------")
+    print(f"Python         OK   {platform.python_version()} ({python_executable()})")
+    print(f"Platform       OK   {platform.system()} {platform.release()}")
+    print(f'Stdout         OK   {getattr(sys.stdout, "encoding", None) or "unknown"}')
+    print(f'Stderr         OK   {getattr(sys.stderr, "encoding", None) or "unknown"}')
+
+    required_ok = True
+    for cmd in ("ffmpeg", "ffprobe"):
+        path = shutil.which(cmd)
+        if path:
+            _doctor_line(cmd, "OK", path)
+        else:
+            _doctor_line(cmd, "MISS", "not found in PATH")
+            required_ok = False
+
+    edge_ok = shell_ok(python_module_cmd("edge_tts", "--help"), timeout=15)
+    if edge_ok:
+        _doctor_line("edge-tts", "OK", "python -m edge_tts")
+    else:
+        _doctor_line("edge-tts", "MISS", "not installed or not runnable")
+        required_ok = False
+
+    alass_path = shutil.which("alass")
+    if alass_path:
+        _doctor_line("alass", "OK", alass_path)
+    else:
+        _doctor_line("alass", "OPT", "not installed (subtitle sync will be skipped)")
+
+    cache_root = cache_root_dir(create=False) or cache_root_dir(create=True) or "unavailable"
+    _doctor_line("cache", "OK", cache_root)
+
+    available_engines = []
+    missing_engines = []
+    for name, backend_cls in sorted(BACKEND_REGISTRY.items()):
+        try:
+            if backend_cls.is_available():
+                available_engines.append(name)
+            else:
+                missing_engines.append(name)
+        except Exception:
+            missing_engines.append(name)
+    _doctor_line("engines", "OK", ", ".join(available_engines) if available_engines else "none available")
+    if missing_engines:
+        _doctor_line("engines-miss", "OPT", ", ".join(missing_engines))
+
+    print()
+    if required_ok:
+        print("Doctor result: OK")
+        sys.exit(0)
+    print("Doctor result: missing required dependencies")
+    sys.exit(EXIT_DEPENDENCY_ERROR)
 
 
 ### TTS Backend abstraction ###########################################

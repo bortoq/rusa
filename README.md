@@ -37,6 +37,21 @@ By default, rusa writes the result next to the source file, for example:
 movie_edge-tts_ru.mkv
 ```
 
+
+### Quick health check
+
+```bash
+rusa --doctor
+```
+
+This prints a short report about:
+- Python interpreter
+- platform and console encoding
+- `ffmpeg` / `ffprobe`
+- `edge-tts`
+- available TTS engines
+- cache directory
+
 ---
 
 ## Common examples
@@ -111,9 +126,23 @@ rusa --preset youtube movie.mkv
 | `--subs-mode MODE` | Subtitle handling: `auto`, `copy`, `convert`, `drop` | `auto` |
 | `--normalize [fast\|fine]` | Normalize output loudness | off |
 | `--preset NAME` | Quality preset: `youtube`, `tiktok`, `podcast`, `cinema` | off |
+| `--doctor` | Check local runtime dependencies and environment, then exit | off |
 | `--version` | Show version and exit | — |
 
 ---
+## Docker
+
+```bash
+docker build -t rusa .
+docker run --rm rusa --help
+```
+
+For real processing, mount a directory with your media files:
+
+```bash
+docker run --rm -v $(pwd):/data rusa movie.mkv
+```
+
 
 ## Built-in TTS engines
 

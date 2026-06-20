@@ -94,7 +94,10 @@ jobs:
         run: pip install dist/*.whl
 
       - name: Smoke check installed CLI
-        run: rusa --version
+        run: |
+          rusa --version
+          rusa --help
+          rusa --doctor || true
 
   lint:
     name: lightweight lint
@@ -115,3 +118,18 @@ jobs:
 
       - name: Run lightweight lint
         run: ruff check . --select E9,F63,F7,F82
+
+  docker-smoke:
+    name: docker smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build Docker image
+        run: docker build -t rusa:test .
+
+      - name: Smoke check Docker CLI
+        run: |
+          docker run --rm rusa:test --version
+          docker run --rm rusa:test --help

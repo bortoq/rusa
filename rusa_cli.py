@@ -62,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-stats", action="store_true", help="Show TTS/WAV cache statistics and exit")
     parser.add_argument("--cache-clear", action="store_true", help="Clear TTS/WAV cache and exit")
     parser.add_argument("--no-cache", action="store_true", help="Disable TTS/WAV cache reads and writes for this run")
+    parser.add_argument("--doctor", action="store_true", help="Check local runtime dependencies and environment, then exit")
     parser.add_argument("--version", action="version", version="rusa 0.1.0", help="Show version and exit")
 
     fmt_group = parser.add_mutually_exclusive_group()

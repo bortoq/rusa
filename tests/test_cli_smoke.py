@@ -128,6 +128,17 @@ def test_cli_cache_clear_smoke(tmp_path: Path) -> None:
     assert "Cache" in result.stdout
 
 
+def test_cli_doctor_smoke(tmp_path: Path) -> None:
+    """--doctor must print a report and exit with status 0."""
+    env = _make_fake_runtime(tmp_path)
+    result = _run_cli("--doctor", env=env)
+    assert result.returncode == 0
+    assert "rusa doctor" in result.stdout
+    assert "ffmpeg" in result.stdout
+    assert "edge-tts" in result.stdout
+    assert "Doctor result: OK" in result.stdout
+
+
 def test_cli_dry_run_with_external_srt_smoke(tmp_path: Path) -> None:
     env = _make_fake_runtime(tmp_path)
     video = tmp_path / "movie.mkv"

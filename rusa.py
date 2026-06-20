@@ -58,6 +58,7 @@ from rusa_shared import (          # noqa: F401 — re-exported as public API
     normalize_lang_code,
     ok,
     print_cache_stats,
+    print_doctor_report,
     print_timing_summary,
     tts_cache_dir,
     tts_cache_path as _tts_cache_path,
@@ -230,6 +231,8 @@ def main(args: argparse.Namespace | None = None) -> None:
         if args.cache_clear:
             clear_cache()
 
+        if args.doctor:
+            print_doctor_report()
         rusa_shared._CACHE_DISABLED = bool(args.no_cache)
 
         if not args.video:
