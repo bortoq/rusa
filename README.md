@@ -1,5 +1,7 @@
 # rusa — AI Voiceover for Movies
 
+[![PyPI version](https://img.shields.io/pypi/v/rusa.svg)](https://pypi.org/project/rusa/)
+
 **rusa** is a CLI tool that creates a translated voiceover track from subtitles and mixes it into a video or exports audio-only output.
 
 ## Project status
