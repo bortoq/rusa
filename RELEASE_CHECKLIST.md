@@ -27,6 +27,7 @@ Use this checklist before cutting a new release.
 
 ## Release
 
-- [ ] create git tag
-- [ ] create GitHub Release notes from `CHANGELOG.md`
-- [ ] publish package / image only after tests pass
+- [ ] create git tag: `git tag v0.X.Y && git push origin v0.X.Y`
+- [ ] CI publishes to PyPI automatically (publish job in `test.yml`)
+- [ ] create GitHub Release from tag: `gh release create v0.X.Y --generate-notes`
+- [ ] verify new version appears on https://pypi.org/project/rusa/
