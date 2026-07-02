@@ -1,0 +1,163 @@
+# ──────────────────────────────────────────────────────────
+# rusa — default configuration
+# ──────────────────────────────────────────────────────────
+# Override any value by creating ~/.config/rusa/config.yaml
+# YAML merge is recursive: you only need to specify the keys you want to change.
+#
+# Example ~/.config/rusa/config.yaml:
+#   threads: 4
+#   tts:
+#     max_retries: 5
+#   speed: auto
+# ──────────────────────────────────────────────────────────
+
+# ── Voice & Audio ─────────────────────────────────────────
+
+# Default TTS voice name (edge-tts format: xx-XX-NameNeural)
+voice: ru-RU-SvetlanaNeural
+
+# Speech speed.  A floating-point multiplier, e.g. "1.5" = 1.5×.
+# Special value "auto" enables per-segment auto-speed tuning:
+#   each subtitle is accelerated just enough to fit its timeslot,
+#   clamped between auto_speed.min and auto_speed.max.
+speed: "auto"
+
+# Volume of the original movie audio track (0.0 … 1.0)
+orig_vol: 0.65
+
+# Volume of the TTS voiceover track (0.0 … 1.0)
+tts_vol: 0.93
+
+# Number of parallel worker threads for TTS generation / WAV conversion
+threads: 6
+
+# Subtitle handling mode in the output file: auto | copy | convert | drop
+subs_mode: auto
+
+# ── Cache ─────────────────────────────────────────────────
+
+cache:
+  # Maximum cache size in bytes (default: 2 GiB).
+  # Can be overridden by the environment variable RUSA_CACHE_MAX_SIZE.
+  max_size: 2147483648
+
+  # If true, caching is disabled by default (equivalent to passing --no-cache).
+  disabled_by_default: false
+
+# ── Audio parameters ──────────────────────────────────────
+
+audio:
+  # Default output audio format (codec key from the "codecs" section below)
+  codec: opus
+  # Default bitrate (the number, without "k" suffix)
+  bitrate: "64"
+
+  # WAV file format constants (do not change unless you know what you are doing)
+  channels: 2
+  samplewidth: 2         # 16-bit
+  framerate: 48000
+  header_size: 44
+
+  # Minimum valid WAV duration in milliseconds.
+  # Shorter files are treated as failed and discarded.
+  min_wav_duration_ms: 50
+
+  # Silence-removal threshold for ffmpeg's silenceremove filter.
+  # Lower values preserve more quiet speech (useful for soft-spoken voices).
+  silence:
+    threshold: 0.0001
+    duration: 0.01
+
+# ── Supported audio codecs ─────────────────────────────────
+# Each entry defines how rusa maps a short format name to ffmpeg parameters.
+codecs:
+  aac:
+    ffmpeg_codec: aac
+    container: mkv
+    ext: .aac
+    default_bitrate: "128"
+  mp3:
+    ffmpeg_codec: libmp3lame
+    container: mkv
+    ext: .mp3
+    default_bitrate: "192"
+  opus:
+    ffmpeg_codec: libopus
+    container: mkv
+    ext: .opus
+    default_bitrate: "64"
+  ac3:
+    ffmpeg_codec: ac3
+    container: mkv
+    ext: .ac3
+    default_bitrate: "448"
+
+# ── TTS engine ────────────────────────────────────────────
+
+tts:
+  # TTS engine backend (edge | piper | rhvoice | espeak | gtts | festival | custom)
+  backend: edge
+
+  # Maximum characters per single TTS request.
+  # Longer text is automatically split into parts and concatenated with ffmpeg.
+  max_chars: 3000
+
+  # How many times to retry a failed TTS request before giving up.
+  max_retries: 3
+
+  # Base multiplier for retry backoff (sleep = retry_backoff × attempt_number).
+  retry_backoff: 1.5
+
+# ── Auto-speed tuning (used when speed: auto) ─────────────
+
+auto_speed:
+  # Upper speed limit — a subtitle will never be faster than this.
+  max: 1.5
+  # Lower speed limit — a subtitle will never be slower than this.
+  min: 0.8
+
+# ── Audio normalization (ffmpeg loudnorm / dynaudnorm) ─────
+
+normalization:
+  # Target loudness parameters for the two‑pass EBU R128 loudnorm filter.
+  loudnorm_I: -16
+  loudnorm_LRA: 11
+  loudnorm_TP: -1.5
+
+# ── Subtitle merging ──────────────────────────────────────
+
+subtitles:
+  # Maximum gap in milliseconds between two consecutive subtitle lines
+  # that are considered part of the same sentence and can be merged.
+  merge_max_gap_ms: 200
+
+# ── Quality presets (used via --preset) ────────────────────
+
+presets:
+  youtube:
+    aac: "192"
+    normalize: fine
+    speed: "1.5"
+    orig_vol: 0.65
+    audio_only: false
+  tiktok:
+    aac: "128"
+    normalize: fine
+    speed: "1.8"
+    orig_vol: 0.70
+    audio_only: true
+  podcast:
+    mp3: "128"
+    normalize: fine
+    speed: "1.5"
+    orig_vol: 0.50
+    audio_only: true
+  cinema:
+    opus: "96"
+    normalize: fine
+    speed: "1.3"
+    orig_vol: 0.50
+    audio_only: false
+
+# ── Internal version markers (do not change) ──────────────
+wav_filter_version: "1"

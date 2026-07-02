@@ -21,7 +21,7 @@ import time
 import rusa_audio
 import rusa_mux
 import rusa_shared
-from rusa_audio import step_assemble, step_convert_wav
+from rusa_audio import compute_auto_speed, step_assemble, step_convert_wav
 from rusa_cli import build_parser as _build_parser_impl, list_voices
 from rusa_mux import _check_ffmpeg_codec, _get_codec, step_mix_output
 from rusa_shared import _restore_terminal, _save_terminal  # noqa: F401 — terminal guard
@@ -34,6 +34,7 @@ from rusa_shared import (          # noqa: F401 — re-exported as public API
     DEFAULT_THREADS,
     DEFAULT_TTS_VOL,
     DEFAULT_VOICE,
+    _cfg,
     EXIT_CODEC_ERROR,
     EXIT_DEPENDENCY_ERROR,
     EXIT_RUNTIME_ERROR,
@@ -75,36 +76,7 @@ from rusa_tts import _split_text, step_generate_tts
 # ── Quality presets ───────────────────────────────────────────────────
 # Each preset sets flags that can be overridden by explicit CLI args.
 # Semantics: if the user explicitly passed a flag, it wins over the preset.
-PRESET_MAP = {
-    "youtube": {
-        "aac": "192",
-        "normalize": "fine",
-        "speed": "1.5",
-        "orig_vol": "0.65",
-        "audio_only": False,
-    },
-    "tiktok": {
-        "aac": "128",
-        "normalize": "fine",
-        "speed": "1.8",
-        "orig_vol": "0.70",
-        "audio_only": True,
-    },
-    "podcast": {
-        "mp3": "128",
-        "normalize": "fine",
-        "speed": "1.5",
-        "orig_vol": "0.50",
-        "audio_only": True,
-    },
-    "cinema": {
-        "opus": "96",
-        "normalize": "fine",
-        "speed": "1.3",
-        "orig_vol": "0.50",
-        "audio_only": False,
-    },
-}
+PRESET_MAP: dict = _cfg("presets", default={})  # type: ignore[assignment]
 
 
 def _explicit_flag(name: str, argv: list[str] | None = None) -> bool:
@@ -122,6 +94,34 @@ def _explicit_flag(name: str, argv: list[str] | None = None) -> bool:
             if a[1:] == name[:1]:
                 return True
     return False
+
+
+def _parse_speed(raw: str) -> str:
+    """Parse --speed value; return display label.
+
+    Accepts: ``1.5``, ``auto``, ``auto:max=2.0``, ``auto:min=0.7``, ``auto:max=2.0:min=0.7``.
+
+    Sets module-level globals ``_AUTO_SPEED``, ``_AUTO_MAX``, ``_AUTO_MIN``.
+    """
+    global _AUTO_SPEED, _AUTO_MAX, _AUTO_MIN
+    if raw.lower().startswith("auto"):
+        _AUTO_SPEED = True
+        params = raw.lower().split(":")
+        for p in params[1:]:
+            if p.startswith("max="):
+                _AUTO_MAX = float(p[4:])
+            elif p.startswith("min="):
+                _AUTO_MIN = float(p[4:])
+        label = f"auto (max={_AUTO_MAX}x, min={_AUTO_MIN}x)" if _AUTO_MIN != 0.8 else f"auto (max={_AUTO_MAX}x)"
+        return label
+    _AUTO_SPEED = False
+    _AUTO_MIN = 0.0  # unused
+    return f"{raw}x"
+
+
+_AUTO_SPEED = False
+_AUTO_MAX: float = _cfg("auto_speed", "max", default=1.5)  # type: ignore[assignment]
+_AUTO_MIN: float = _cfg("auto_speed", "min", default=0.8)  # type: ignore[assignment]
 
 
 def _apply_preset(args: argparse.Namespace, argv: list[str] | None = None) -> None:
@@ -263,8 +263,8 @@ def main(args: argparse.Namespace | None = None) -> None:
             if not backend_cls.is_available():
                 die("edge-tts is not installed (pip install edge-tts)", EXIT_DEPENDENCY_ERROR)
 
-        audio_fmt = "opus"
-        audio_bitrate = "64"
+        audio_fmt: str = _cfg("audio", "codec", default="opus")  # type: ignore[assignment]
+        audio_bitrate: str = _cfg("audio", "bitrate", default="64")  # type: ignore[assignment]
         normalize = args.normalize
         for candidate in ("aac", "mp3", "opus", "ac3"):
             value = getattr(args, candidate, None)
@@ -342,9 +342,10 @@ def main(args: argparse.Namespace | None = None) -> None:
             codec_name, codec_bit = audio_fmt, f"{audio_bitrate}k"
         else:
             codec_name, codec_bit = codec_info[0], codec_info[1]
+        speed_label = _parse_speed(args.speed)
         info(
             f"Sync: {sync_str} | Voice: {voice} | Codec: {codec_name} {codec_bit} | "
-            f"Speed: {args.speed}x | Original: {args.orig_vol} | TTS: {args.tts_vol}"
+            f"Speed: {speed_label} | Original: {args.orig_vol} | TTS: {args.tts_vol}"
         )
         if normalize:
             info(f"Normalization: {normalize}")
@@ -404,7 +405,11 @@ def main(args: argparse.Namespace | None = None) -> None:
             timings.append(("tts", time.perf_counter() - started))
 
             started = time.perf_counter()
-            wav_results = step_convert_wav(tts_results, args.speed, tmpdir, args.threads)
+            if _AUTO_SPEED:
+                speed_map = compute_auto_speed(tts_results, entries, _AUTO_MAX, _AUTO_MIN)
+                wav_results = step_convert_wav(tts_results, speed_map, tmpdir, args.threads)
+            else:
+                wav_results = step_convert_wav(tts_results, args.speed, tmpdir, args.threads)
             timings.append(("wav", time.perf_counter() - started))
 
             started = time.perf_counter()

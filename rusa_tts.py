@@ -84,10 +84,12 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
                     if rc == 0 and os.path.isfile(out) and os.path.getsize(out) > 100:
                         copy_into_cache(out, cache_path)
                         return idx, out
+                    if rc != 0:
+                        warn(f"  #{idx} TTS attempt {attempt} failed (rc={rc})")
                 except subprocess.TimeoutExpired:
-                    pass
-                except Exception:
-                    pass
+                    warn(f"  #{idx} TTS attempt {attempt} timed out")
+                except Exception as exc:
+                    warn(f"  #{idx} TTS attempt {attempt} error: {exc}")
                 if attempt < max_retries:
                     time.sleep(1.5 * attempt)
             return idx, None
@@ -105,10 +107,12 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
                     if rc == 0 and os.path.isfile(part_out) and os.path.getsize(part_out) > 100:
                         generated = True
                         break
+                    if rc != 0:
+                        warn(f"  #{idx} p{part_index} TTS attempt {attempt} failed (rc={rc})")
                 except subprocess.TimeoutExpired:
-                    pass
-                except Exception:
-                    pass
+                    warn(f"  #{idx} p{part_index} TTS attempt {attempt} timed out")
+                except Exception as exc:
+                    warn(f"  #{idx} p{part_index} TTS attempt {attempt} error: {exc}")
                 if attempt < max_retries:
                     time.sleep(1.5 * attempt)
             if generated:

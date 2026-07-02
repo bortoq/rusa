@@ -4,6 +4,7 @@ from __future__ import annotations
 __all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "print_doctor_report", "_save_terminal", "_restore_terminal"]
 
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -14,6 +15,8 @@ import time
 import atexit
 import signal
 import platform
+from pathlib import Path
+from typing import Any
 
 try:
     import termios
@@ -22,6 +25,71 @@ except ImportError:  # pragma: no cover - Windows
 
 HAS_TQDM = False
 HAS_LANGDETECT = False
+
+HAS_YAML = False
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    yaml = None  # type: ignore[assignment]
+
+# ── Config from defaults.yaml ─────────────────────────────────────────
+_DEFAULTS_PATH = Path(__file__).parent / "defaults.yaml"
+_USER_CONFIG_PATH = Path.home() / ".config" / "rusa" / "config.yaml"
+
+def _load_config() -> dict:
+    """Load config from defaults.yaml + user override (deep-merge)."""
+    config: dict[str, object] = {}
+    if not HAS_YAML:
+        return config
+    try:
+        with open(_DEFAULTS_PATH) as f:
+            config = yaml.safe_load(f) or {}
+    except (FileNotFoundError, yaml.YAMLError):
+        pass
+    try:
+        with open(_USER_CONFIG_PATH) as f:
+            _deep_merge(config, yaml.safe_load(f))
+    except (FileNotFoundError, yaml.YAMLError):
+        pass
+    return config
+
+
+def _deep_merge(base: dict, overrides: dict) -> None:
+    for key, val in overrides.items():
+        if key in base and isinstance(base[key], dict) and isinstance(val, dict):
+            _deep_merge(base[key], val)
+        else:
+            base[key] = val
+
+
+def _cfg(*keys: str, default: object = None) -> object:
+    val: object = _CONFIG
+    for k in keys:
+        if isinstance(val, dict):
+            val = val.get(k)  # type: ignore[union-attr]
+        else:
+            return default
+    return val if val is not None else default
+
+
+_CONFIG = _load_config()
+
+
+def _build_codec_map() -> dict[str, tuple[str, str, str, str]]:
+    result: dict[str, tuple[str, str, str, str]] = {}
+    codecs = _cfg("codecs", default={})
+    for name, data in codecs.items():  # type: ignore[union-attr]
+        d = data  # type: ignore[assignment]
+        result[name] = (
+            d.get("ffmpeg_codec", name),
+            d.get("container", "mkv"),
+            d.get("ext", f".{name}"),
+            d.get("default_bitrate", "128"),
+        )
+    return result
+
+
 try:
     from tqdm import tqdm
     HAS_TQDM = True
@@ -37,18 +105,18 @@ except ImportError:
     detect = None  # type: ignore[assignment]
     LangDetectException = Exception  # type: ignore[misc]
 
-DEFAULT_VOICE = "ru-RU-SvetlanaNeural"
-DEFAULT_SPEED = "1.5"
-DEFAULT_ORIG_VOL = "0.65"
-DEFAULT_TTS_VOL = "0.93"
-DEFAULT_THREADS = 6
-MAX_TTS_CHARS = 3000
-WAV_FILTER_VERSION = "1"
-DEFAULT_SUBS_MODE = "auto"
+DEFAULT_VOICE: str = _cfg("voice", default="ru-RU-SvetlanaNeural")  # type: ignore[assignment]
+DEFAULT_SPEED: str = _cfg("speed", default="1.5")  # type: ignore[assignment]
+DEFAULT_ORIG_VOL: str = _cfg("orig_vol", default="0.65")  # type: ignore[assignment]
+DEFAULT_TTS_VOL: str = _cfg("tts_vol", default="0.93")  # type: ignore[assignment]
+DEFAULT_THREADS: int = _cfg("threads", default=6)  # type: ignore[assignment]
+MAX_TTS_CHARS: int = _cfg("tts", "max_chars", default=3000)  # type: ignore[assignment]
+WAV_FILTER_VERSION: str = _cfg("wav_filter_version", default="1")  # type: ignore[assignment]
+DEFAULT_SUBS_MODE: str = _cfg("subs_mode", default="auto")  # type: ignore[assignment]
 _CACHE_DISABLED = False
 
 # Cache size limit (LRU eviction)
-DEFAULT_CACHE_MAX_SIZE = 2 * 1024 * 1024 * 1024  # 2 GiB
+DEFAULT_CACHE_MAX_SIZE: int = _cfg("cache", "max_size", default=2147483648)  # type: ignore[assignment]
 
 
 def _cache_max_size() -> int:
@@ -109,12 +177,7 @@ EXIT_DEPENDENCY_ERROR = 3
 EXIT_SUBTITLE_ERROR = 4
 EXIT_CODEC_ERROR = 5
 
-CODEC_MAP = {
-    "aac": ("aac", "mkv", ".aac", "128"),
-    "mp3": ("libmp3lame", "mkv", ".mp3", "192"),
-    "opus": ("libopus", "mkv", ".opus", "64"),
-    "ac3": ("ac3", "mkv", ".ac3", "448"),
-}
+CODEC_MAP: dict[str, tuple[str, str, str, str]] = _build_codec_map()
 
 LANG_VOICE_MAP = {
     "ru": "ru-RU-SvetlanaNeural",
@@ -201,11 +264,11 @@ YELLOW = "\033[1;33m"
 CYAN = "\033[0;36m"
 NC = "\033[0m"
 
-WAV_CHANNELS = 2
-WAV_SAMPLEWIDTH = 2
-WAV_FRAMERATE = 48000
+WAV_CHANNELS: int = _cfg("audio", "channels", default=2)  # type: ignore[assignment]
+WAV_SAMPLEWIDTH: int = _cfg("audio", "samplewidth", default=2)  # type: ignore[assignment]
+WAV_FRAMERATE: int = _cfg("audio", "framerate", default=48000)  # type: ignore[assignment]
 WAV_BPF = WAV_CHANNELS * WAV_SAMPLEWIDTH
-WAV_HEADER_SIZE = 44
+WAV_HEADER_SIZE: int = _cfg("audio", "header_size", default=44)  # type: ignore[assignment]
 
 
 def voice_to_lang_code(voice: str) -> str:
@@ -693,10 +756,15 @@ class EdgeTtsBackend(TtsBackend):
 
     @staticmethod
     def generate(text: str, voice: str, out: str) -> int:
-        return subprocess.run(
+        result = subprocess.run(
             python_module_cmd("edge_tts", "--voice", voice, "--text", text, "--write-media", out),
             capture_output=True, timeout=180, check=False,
-        ).returncode
+        )
+        if result.returncode != 0:
+            err_text = result.stderr.decode("utf-8", errors="replace").strip()[:200]
+            if err_text:
+                warn(f"edge-tts: {err_text}")
+        return result.returncode
 
 
 # ---------------------------------------------------------------------------

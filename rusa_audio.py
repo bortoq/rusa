@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 """Audio conversion and assembly for rusa."""
-__all__ = ['step_convert_wav', 'step_assemble']
+__all__ = ['step_convert_wav', 'step_assemble', 'compute_auto_speed', '_mp3_duration']
 
 import os
 import shutil
@@ -27,23 +27,80 @@ from rusa_shared import (
 )
 
 
-def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str, threads: int = 1) -> list[tuple[int, str, float]]:
-    info(f"Converting MP3 -> WAV + atempo={speed}x...")
+def _mp3_duration(path: str) -> float:
+    """Return duration in ms of an audio file using ffprobe.  Returns 0 on failure."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip()) * 1000  # seconds → ms
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return 0.0
+
+
+def compute_auto_speed(
+    tts_results: list[tuple[int, str]],
+    entries: list[dict],
+    max_speed: float,
+    min_speed: float = 0.8,
+) -> dict[int, float]:
+    """Build per-entry speed map so each TTS segment fits its subtitle timeslot.
+
+    For each (idx, mp3_path) in *tts_results*:
+      1. measure actual mp3 duration via ffprobe
+      2. available time = entry.end_ms - entry.start_ms
+      3. required = mp3_dur / available, clamped to [min_speed, max_speed]
+
+    Returns *{idx: tempo, ...}*.
+    """
+    entry_map: dict[int, dict] = {e["idx"]: e for e in entries}
+    speed_map: dict[int, float] = {}
+    for idx, mp3_path in tts_results:
+        entry = entry_map.get(idx)
+        if entry is None:
+            speed_map[idx] = max_speed
+            continue
+        avail_ms = entry["end_ms"] - entry["start_ms"]
+        if avail_ms <= 0:
+            speed_map[idx] = max_speed
+            continue
+        mp3_dur_ms = _mp3_duration(mp3_path)
+        if mp3_dur_ms <= 0:
+            speed_map[idx] = max_speed
+            continue
+        required = mp3_dur_ms / avail_ms
+        speed_map[idx] = max(min_speed, min(required, max_speed))
+    return speed_map
+
+
+def step_convert_wav(
+    tts_results: list[tuple[int, str]],
+    speed: str | dict[int, float],
+    tmpdir: str,
+    threads: int = 1,
+) -> list[tuple[int, str, float]]:
+    if isinstance(speed, dict):
+        info("Converting MP3 -> WAV (auto-tempo)...")
+    else:
+        info(f"Converting MP3 -> WAV + atempo={speed}x...")
     wav_dir = os.path.join(tmpdir, "wav")
     os.makedirs(wav_dir, exist_ok=True)
     results: list[tuple[int, str, float]] = []
 
-    speed_val = float(speed)
-    if speed_val > 2.0:
-        chain = []
-        remaining = speed_val
-        while remaining > 2.0:
-            chain.append("atempo=2.0")
-            remaining /= 2.0
-        chain.append(f"atempo={remaining:.6f}")
-        tempo_filter = ",".join(chain)
-    else:
-        tempo_filter = f"atempo={speed_val:.6f}"
+    def _tempo_filter(speed_val: float) -> str:
+        if speed_val > 2.0:
+            chain = []
+            remaining = speed_val
+            while remaining > 2.0:
+                chain.append("atempo=2.0")
+                remaining /= 2.0
+            chain.append(f"atempo={remaining:.6f}")
+            return ",".join(chain)
+        return f"atempo={speed_val:.6f}"
 
     def convert_one(item: tuple[int, str]) -> tuple[int, str, float] | None:
         idx, mp3_path = item
@@ -61,11 +118,12 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str
             except Exception:
                 warn(f"  #{idx} cached wav damaged, regenerating")
 
+        spd = speed.get(idx, 1.0) if isinstance(speed, dict) else float(speed)
         filter_str = (
-            f"{tempo_filter},"
-            "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+            f"{_tempo_filter(spd)},"
+            "silenceremove=start_periods=1:start_threshold=0.0001:start_silence=0.01,"
             "areverse,"
-            "silenceremove=start_periods=1:start_threshold=0.0018:start_silence=0.01,"
+            "silenceremove=start_periods=1:start_threshold=0.0001:start_silence=0.01,"
             "areverse"
         )
         rc = subprocess.run(
@@ -98,9 +156,9 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str
                     copy_into_cache(wav_path, cache_path)
                     return (idx, wav_path, duration_ms)
                 warn(f"  #{idx} too short ({duration_ms:.0f}ms), skipped")
-            except Exception:
-                copy_into_cache(wav_path, cache_path)
-                return (idx, wav_path, 0)
+            except Exception as exc:
+                warn(f"  #{idx} WAV damaged: {exc}")
+                return None
         else:
             warn(f"  #{idx} could not be converted")
         return None
@@ -122,7 +180,8 @@ def step_convert_wav(tts_results: list[tuple[int, str]], speed: str, tmpdir: str
     if pbar:
         pbar.close()
     results.sort(key=lambda item: item[0])
-    ok(f"WAV (sped {speed}x): {len(results)}")
+    speed_label = "auto" if isinstance(speed, dict) else speed
+    ok(f"WAV (sped {speed_label}x): {len(results)}")
     return results
 
 
@@ -138,6 +197,7 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
         if idx in wav_map:
             path, dur = wav_map[idx]
             if dur <= 0:
+                warn(f"  #{idx} zero-duration segment skipped")
                 continue
             segments.append({"start_ms": entry["start_ms"], "duration_ms": dur, "path": path})
     if not segments:

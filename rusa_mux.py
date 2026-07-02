@@ -16,6 +16,7 @@ from rusa_shared import (
     EXIT_SUBTITLE_ERROR,
     WAV_CHANNELS,
     WAV_FRAMERATE,
+    _cfg,
     die,
     info,
     ok,
@@ -176,8 +177,11 @@ def _build_video_mux_cmd(
 
 
 def _run_loudnorm(in_wav: str, out_wav: str) -> bool:
+    _ln_I = _cfg("normalization", "loudnorm_I", default=-16)
+    _ln_LRA = _cfg("normalization", "loudnorm_LRA", default=11)
+    _ln_TP = _cfg("normalization", "loudnorm_TP", default=-1.5)
     r1 = subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", in_wav, "-af", "loudnorm=I=-16:LRA=11:TP=-1.5:print_format=json", "-f", "null", "-"],
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", in_wav, "-af", f"loudnorm=I={_ln_I}:LRA={_ln_LRA}:TP={_ln_TP}:print_format=json", "-f", "null", "-"],
         check=False,
         capture_output=True,
         text=True,
@@ -191,16 +195,16 @@ def _run_loudnorm(in_wav: str, out_wav: str) -> bool:
         if json_start < 0 or json_end <= json_start:
             return False
         measured = json.loads(stderr[json_start:json_end])
-        measured_i = measured.get("input_i", "-16.0")
-        measured_lra = measured.get("input_lra", "11.0")
-        measured_tp = measured.get("input_tp", "-1.5")
+        measured_i = measured.get("input_i", str(_ln_I))
+        measured_lra = measured.get("input_lra", str(_ln_LRA))
+        measured_tp = measured.get("input_tp", str(_ln_TP))
         measured_thresh = measured.get("input_thresh", "-21.0")
         offset = measured.get("target_offset", "0.0")
     except (json.JSONDecodeError, ValueError):
         return False
 
     filter_expr = (
-        f"loudnorm=I=-16:LRA=11:TP=-1.5:"
+        f"loudnorm=I={_ln_I}:LRA={_ln_LRA}:TP={_ln_TP}:"
         f"measured_I={measured_i}:measured_LRA={measured_lra}:"
         f"measured_TP={measured_tp}:measured_thresh={measured_thresh}:"
         f"offset={offset}:print_format=summary"

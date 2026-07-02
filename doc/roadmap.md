@@ -24,6 +24,8 @@ Current priorities:
 - Docker support
 - GitHub Action support
 - subprocess-based CLI smoke tests
+- **all defaults extracted into `defaults.yaml`** — no hardcoded constants in Python code; user can override via `~/.config/rusa/config.yaml`
+- **auto-fit TTS speed per subtitle line** (`--speed auto[:max=N][:min=M]`) — each segment accelerated just enough to fit its timeslot
 
 ## Current technical debt
 
@@ -37,6 +39,8 @@ Current priorities:
 - broader engine examples and tuning guides
 - more real-world CLI smoke scenarios
 - optional packaging polish for public release
+- incremental regeneration of individual subtitle entries (`--remake 5,8-12` / `--remake-failed`)
+- export per-entry WAV segments for manual replacement, then reassemble (`--export-wavs DIR` / `--import-wavs DIR --reassemble`)
 
 ## Out of focus for now
 

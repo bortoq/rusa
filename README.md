@@ -1,4 +1,4 @@
-# rusa — AI Voiceover for Movies
+# rusa — AI Voiceover for Movies & Videos
 
 [![PyPI version](https://img.shields.io/pypi/v/rusa.svg)](https://pypi.org/project/rusa/)
 [![Python versions](https://img.shields.io/pypi/pyversions/rusa.svg)](https://pypi.org/project/rusa/)
@@ -83,6 +83,12 @@ rusa --preview 10 --dry-run movie.mkv
 
 # Higher quality output for YouTube-style upload
 rusa --preset youtube movie.mkv
+
+# Auto-speed — each subtitle is accelerated just enough to fit its timeslot
+rusa --speed auto movie.mkv
+
+# Auto-speed with a custom upper limit
+rusa --speed auto:max=2.0 movie.mkv
 ```
 
 ---
@@ -108,7 +114,7 @@ rusa --preset youtube movie.mkv
 | `-s, --srt FILE` | External subtitle file | auto-detect / extract |
 | `--voice [VOICE]` | TTS voice; without value, list voices | auto |
 | `--lang LANG` | Subtitle language code | auto |
-| `--speed SPEED` | TTS speech speed | `1.5` |
+| `--speed SPEED` | TTS speech speed; `auto` for per-segment tuning | `1.5` |
 | `--orig-vol VOL` | Original audio volume | `0.65` |
 | `--tts-vol VOL` | Voiceover volume | `0.93` |
 | `--sync` | Synchronize subtitles with `alass` | off |
