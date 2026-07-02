@@ -91,7 +91,7 @@ def test_cli_help_smoke() -> None:
 def test_cli_version_smoke() -> None:
     result = _run_cli("--version")
     assert result.returncode == 0
-    assert "rusa 0.1.0" in result.stdout
+    assert "rusa 0.2.0" in result.stdout
 
 
 def test_cli_voice_list_default_engine_smoke(tmp_path: Path) -> None:

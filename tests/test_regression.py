@@ -235,7 +235,7 @@ def test_main_prints_timing_summary(monkeypatch, tmp_path, capsys):
     video = tmp_path / "movie.mkv"
     video.write_bytes(b"video")
 
-    monkeypatch.setattr(sys, "argv", ["rusa", str(video)])
+    monkeypatch.setattr(sys, "argv", ["rusa", "--speed", "1.5", str(video)])
     monkeypatch.setattr(rusa, "which", lambda cmd: f"/usr/bin/{cmd}")
 
     def fake_run(cmd, **kwargs):
