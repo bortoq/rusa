@@ -101,6 +101,35 @@ def _subtitle_convert_codec(output: str) -> str | None:
     return None
 
 
+# ISO 639-1 → English language name (mirrors LANG_FFPROBE_MAP last entries)
+_LANG_TO_NAME: dict[str, str] = {
+    "ru": "Russian", "en": "English", "he": "Hebrew", "de": "German",
+    "fr": "French", "es": "Spanish", "it": "Italian", "pt": "Portuguese",
+    "ja": "Japanese", "ko": "Korean", "zh": "Chinese", "ar": "Arabic",
+    "tr": "Turkish", "nl": "Dutch", "pl": "Polish", "sv": "Swedish",
+    "da": "Danish", "fi": "Finnish", "nb": "Norwegian", "cs": "Czech",
+    "hu": "Hungarian", "bg": "Bulgarian", "el": "Greek", "hi": "Hindi",
+    "hr": "Croatian", "id": "Indonesian", "ms": "Malay", "ro": "Romanian",
+    "sk": "Slovak", "sr": "Serbian", "th": "Thai", "uk": "Ukrainian",
+    "vi": "Vietnamese",
+}
+
+
+def _sidecar_title(lang_code: str) -> str:
+    """Return a human-readable track title for a sidecar subtitle language.
+    Accepts 3-letter ISO (e.g. 'rus') or 2-letter ISO (e.g. 'ru')."""
+    if lang_code == "und":
+        return "Subtitles"
+    name = _LANG_TO_NAME.get(lang_code)
+    if name:
+        return name
+    if len(lang_code) >= 2:
+        name = _LANG_TO_NAME.get(lang_code[:2])
+        if name:
+            return name
+    return "Subtitles"
+
+
 def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[str], list[str]]:
     if subs_mode == "drop":
         return ["drop"], []
@@ -153,13 +182,31 @@ def _build_video_mux_cmd(
     bitrate_arg: str,
     voiceover_lang: str,
     subtitle_mode: str,
+    sidecar_srt: str | None = None,
+    sidecar_lang: str = "und",
+    n_source_subtitles: int = 0,
 ) -> list[str]:
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", source_audio, "-map", "0:v", "-map", "0:a:0", "-map", "1:a"]
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", source_audio]
+    if sidecar_srt:
+        cmd.extend(["-i", sidecar_srt])
+    cmd.extend(["-map", "0:v", "-map", "0:a:0", "-map", "1:a"])
     if subtitle_mode != "drop":
         cmd.extend(["-map", "0:s?"])
+    if sidecar_srt:
+        cmd.extend(["-map", "2:s"])
     cmd.extend(["-c:v", "copy", "-c:a:0", "copy", "-c:a:1", ffmpeg_codec, "-b:a:1", bitrate_arg])
     if subtitle_mode != "drop":
         cmd.extend(["-c:s", subtitle_mode])
+    if sidecar_srt:
+        # Subtitle-stream index (0-based among subtitle streams in output)
+        # mkv approach: existing_sub_count + idx → sidecar is at n_source_subtitles
+        sub_idx = n_source_subtitles
+        cmd.extend([
+            "-metadata:s:s:%d" % sub_idx,
+            "language=%s" % sidecar_lang,
+            "-metadata:s:s:%d" % sub_idx,
+            "title=%s" % _sidecar_title(sidecar_lang),
+        ])
     cmd.extend(
         [
             "-disposition:a:0",
@@ -239,6 +286,8 @@ def step_mix_output(
     audio_only: bool,
     voiceover_lang: str = "rus",
     subs_mode: str = DEFAULT_SUBS_MODE,
+    sidecar_srt: str | None = None,
+    sidecar_lang: str = "und",
 ) -> None:
     info("Mixing audio...")
     mixed = os.path.join(tmpdir, "mixed.wav")
@@ -311,8 +360,10 @@ def step_mix_output(
         subtitle_modes, source_subtitle_codec = _subtitle_mux_plan(video, output, subs_mode)
         last_err_text = ""
         for index, subtitle_mode in enumerate(subtitle_modes):
+            n_subs = len(source_subtitle_codec) if isinstance(source_subtitle_codec, list) else 0
             rc = subprocess.run(
-                _build_video_mux_cmd(video, source, output, ffmpeg_codec, bitrate_arg, voiceover_lang, subtitle_mode),
+                _build_video_mux_cmd(video, source, output, ffmpeg_codec, bitrate_arg, voiceover_lang, subtitle_mode,
+                    sidecar_srt=sidecar_srt, sidecar_lang=sidecar_lang, n_source_subtitles=n_subs),
                 check=False,
                 capture_output=True,
             )

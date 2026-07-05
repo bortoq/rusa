@@ -781,7 +781,119 @@ def test_subtitle_container_mismatch_message_is_actionable(monkeypatch, tmp_path
     assert "--subs-mode convert" in captured.err
     assert "--subs-mode drop" in captured.err
 
-# ── Preset tests ──────────────────────────────────────────────────────
+
+# ── Sidecar subtitle (-s) tests ──────────────────────────────────────────
+
+def test_step_mix_output_includes_sidecar_srt_in_mux_command(monkeypatch, tmp_path):
+    """When sidecar_srt is provided, the ffmpeg mux command must include -i for the srt, -map 2:s, and language metadata."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    sidecar = tmp_path / "sidecar.srt"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    sidecar.write_text("1\n00:00:01,000 --> 00:00:02,000\nTest\n", encoding="utf-8")
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            # No subtitle streams in source video
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if "-metadata:s:a:1" in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        sidecar_srt=str(sidecar),
+        sidecar_lang="rus",
+    )
+
+    mux_cmd = next(cmd for cmd in calls if "-metadata:s:a:1" in cmd)
+    # Sidecar SRT is added as input 2
+    assert str(sidecar) in mux_cmd, "Sidecar SRT path should appear as ffmpeg input"
+    assert "-map" in mux_cmd
+    assert "2:s" in mux_cmd[mux_cmd.index("-map"):], "Sidecar should be mapped from input 2"
+    # No source subs → sidecar is 1st subtitle stream (idx 0)
+    assert "-metadata:s:s:0" in mux_cmd
+    # Language metadata
+    lang_idx = None
+    for i, arg in enumerate(mux_cmd):
+        if arg == "-metadata:s:s:0":
+            lang_idx = i + 1
+            break
+    if lang_idx:
+        meta = mux_cmd[lang_idx]
+        assert "language=rus" in meta or "language=ru" in meta, "Sidecar language metadata should be set"
+
+
+def test_step_mix_output_sidecar_srt_with_source_subtitles(monkeypatch, tmp_path):
+    """When source video has subtitle streams and sidecar is provided, sidecar metadata index accounts for source subs."""
+    video = tmp_path / "input.mkv"
+    voiceover = tmp_path / "voiceover.wav"
+    output = tmp_path / "output.mkv"
+    sidecar = tmp_path / "sidecar.srt"
+    video.write_bytes(b"video")
+    voiceover.write_bytes(b"wav")
+    sidecar.write_text("1\n00:00:01,000 --> 00:00:02,000\nTest\n", encoding="utf-8")
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "-filter_complex" in cmd:
+            (tmp_path / "mixed.wav").write_bytes(b"mixed")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        if cmd[:3] == ["ffmpeg", "-hide_banner", "-encoders"]:
+            return subprocess.CompletedProcess(cmd, 0, stdout="libopus\naac\n", stderr="")
+        if cmd[:2] == ["ffprobe", "-v"]:
+            # 2 subtitle streams in source video
+            return subprocess.CompletedProcess(cmd, 0, stdout="subrip\nsubrip\n", stderr="")
+        if "-metadata:s:a:1" in cmd:
+            output.write_bytes(b"ok")
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        raise AssertionError(f"Unexpected subprocess call: {cmd}")
+
+    monkeypatch.setattr(rusa.subprocess, "run", fake_run)
+
+    rusa.step_mix_output(
+        str(video),
+        str(voiceover),
+        rusa.DEFAULT_ORIG_VOL,
+        rusa.DEFAULT_TTS_VOL,
+        str(output),
+        str(tmp_path),
+        "opus",
+        "64",
+        None,
+        False,
+        sidecar_srt=str(sidecar),
+        sidecar_lang="eng",
+    )
+
+    mux_cmd = next(cmd for cmd in calls if "-metadata:s:a:1" in cmd)
+    # 2 source subtitles → sidecar is 3rd subtitle stream (idx 2)
+    assert "-metadata:s:s:2" in mux_cmd
+
 
 
 class TestPreset:

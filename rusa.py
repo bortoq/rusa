@@ -423,6 +423,15 @@ def main(args: argparse.Namespace | None = None) -> None:
             else:
                 voiceover_lang = "rus"
             started = time.perf_counter()
+            # Resolve sidecar subtitle language
+            sidecar_lang = "und"
+            if args.srt:
+                if target_lang:
+                    sidecar_lang = lang_code_to_ffprobe_codes(target_lang)[0]
+                elif os.path.isfile(args.srt):
+                    detected_voice = detect_language_from_srt(args.srt)
+                    if detected_voice:
+                        sidecar_lang = lang_code_to_ffprobe_codes(voice_to_lang_code(detected_voice))[0]
             step_mix_output(
                 video,
                 voiceover_wav,
@@ -436,6 +445,8 @@ def main(args: argparse.Namespace | None = None) -> None:
                 args.audio_only,
                 voiceover_lang,
                 args.subs_mode,
+                sidecar_srt=args.srt if args.srt and os.path.isfile(args.srt) else None,
+                sidecar_lang=sidecar_lang,
             )
             timings.append(("mux", time.perf_counter() - started))
             print_timing_summary(timings)
