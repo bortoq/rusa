@@ -445,7 +445,7 @@ def main(args: argparse.Namespace | None = None) -> None:
                 args.audio_only,
                 voiceover_lang,
                 args.subs_mode,
-                sidecar_srt=args.srt if args.srt and os.path.isfile(args.srt) else None,
+                sidecar_srt=subs_path if args.srt else None,
                 sidecar_lang=sidecar_lang,
             )
             timings.append(("mux", time.perf_counter() - started))

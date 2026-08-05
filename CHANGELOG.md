@@ -1,3 +1,14 @@
+## Unreleased
+
+### Fixed
+- Embedded Russian subtitle streams encoded in legacy single-byte encodings
+  (Windows-1251 / cp866 / KOI8-R) are now extracted correctly. ffmpeg is retried
+  with `-sub_charenc`, and the ffmpeg error is surfaced when a stream still
+  cannot be converted to text (e.g. bitmap/PGS subtitles).
+- Read legacy-encoded `.srt` files (e.g. cp1251) without crashing: subtitle
+  files are detected as UTF-8 first, then via chardet / charset_normalizer, and
+  normalized to UTF-8 before parsing and muxing.
+
 ## 0.2.0
 
 ### Added

@@ -30,6 +30,128 @@ class Entry(TypedDict):
     end_ms: int
     text: str
 
+_SUBTITLE_FALLBACK_ENCODINGS = ("cp1251", "cp866", "koi8-r", "latin-1")
+
+try:
+    from chardet import detect as _chardet_detect
+    _HAS_CHARDET = True
+except ImportError:
+    _chardet_detect = None  # type: ignore[assignment]
+    _HAS_CHARDET = False
+
+try:
+    from charset_normalizer import from_bytes as _cn_from_bytes
+    _HAS_CN = True
+except ImportError:
+    _cn_from_bytes = None  # type: ignore[assignment]
+    _HAS_CN = False
+
+
+def _heuristic_decode(raw: bytes) -> str:
+    """Best-effort decode for legacy single-byte subtitle encodings.
+
+    Prefer the encoding that yields the most Cyrillic letters, then the fewest
+    mojibake artefacts (C1 controls / box-drawing).  Latin-1 never fails, so it
+    is the ultimate fallback.
+    """
+    def _cyrillic(text: str) -> int:
+        return sum(1 for c in text if 0x0410 <= ord(c) <= 0x045F)
+
+    def _suspicious(text: str) -> int:
+        return sum(
+            1
+            for c in text
+            if 0x80 <= ord(c) <= 0x9F
+            or 0x2500 <= ord(c) <= 0x257F
+            or c == "\ufffd"
+        )
+
+    best_enc, best_key = "latin-1", None
+    for enc in _SUBTITLE_FALLBACK_ENCODINGS:
+        try:
+            text = raw.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            continue
+        key = (-_cyrillic(text), _suspicious(text))
+        if best_key is None or key < best_key:
+            best_key, best_enc = key, enc
+    return raw.decode(best_enc)
+
+
+def _decode_subtitle_bytes(raw: bytes) -> str:
+    """Decode SRT bytes regardless of legacy file encoding.
+
+    Order: strict UTF-8 (with BOM) -> chardet -> charset_normalizer -> heuristic.
+    Russian subtitles are commonly Windows-1251/cp866; forcing utf-8 used to
+    crash rusa with UnicodeDecodeError.
+    """
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    if _HAS_CHARDET:
+        guess = _chardet_detect(raw) if _chardet_detect else None
+        enc = guess.get("encoding") if guess else None
+        if enc:
+            try:
+                return raw.decode(enc)
+            except (LookupError, UnicodeDecodeError):
+                pass
+    if _HAS_CN and _cn_from_bytes is not None:
+        try:
+            match = _cn_from_bytes(raw).best()
+            if match is not None:
+                return str(match)
+        except Exception:
+            pass
+    return _heuristic_decode(raw)
+
+
+def _read_subtitle_text(path: str) -> str:
+    """Read a subtitle file, detecting legacy encodings instead of crashing."""
+    with open(path, "rb") as handle:
+        return _decode_subtitle_bytes(handle.read())
+
+
+def _normalize_utf8(path: str) -> None:
+    """Rewrite *path* in place as plain UTF-8 (no BOM)."""
+    text = _read_subtitle_text(path)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def _subtitle_line_count(path: str) -> int:
+    return len(_read_subtitle_text(path).splitlines())
+
+
+def _extract_subtitle_stream(video: str, idx: str, dest: str) -> tuple[bool, str]:
+    """Extract one embedded subtitle stream to *dest* (.srt).
+
+    ffmpeg's text-subtitle decoder assumes UTF-8, so Windows-1251/cp866/koi8-r
+    tracks fail with "Invalid UTF-8 in decoded subtitles text".  Retry with
+    -sub_charenc until one attempt succeeds.  Returns (ok, last_stderr).
+    """
+    attempts = (
+        [],
+        ["-sub_charenc", "cp1251"],
+        ["-sub_charenc", "cp866"],
+        ["-sub_charenc", "koi8-r"],
+    )
+    last_err = ""
+    for extra in attempts:
+        rc = subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", *extra, "-i", video, "-map", f"0:{idx}", dest],
+            check=False,
+            capture_output=True,
+        )
+        if rc.stderr:
+            last_err = rc.stderr.decode("utf-8", errors="replace").strip()
+        if rc.returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 0:
+            return True, last_err
+    return False, last_err
+
 
 def detect_language_from_srt(srt_path: str) -> str | None:
     name = os.path.basename(srt_path)
@@ -80,8 +202,7 @@ def detect_language_from_srt(srt_path: str) -> str | None:
         return None
 
     try:
-        with open(srt_path, "r", encoding="utf-8") as handle:
-            raw = handle.read()
+        raw = _read_subtitle_text(srt_path)
         text = re.sub(r"\d+\s+[\d:,.\s\->]+\s+", "", raw)
         text = re.sub(r"<[^>]+>", "", text)
         text = re.sub(r"\s+", " ", text).strip()[:5000]
@@ -102,13 +223,15 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
             die(f"Subtitle file not found: {srt_file}", EXIT_SUBTITLE_ERROR)
         info(f"Using subtitles: {srt_file}")
         shutil.copy2(srt_file, dest)
-        ok(f"Subtitles: {sum(1 for _ in open(dest, encoding='utf-8'))} lines")
+        _normalize_utf8(dest)
+        ok(f"Subtitles: {_subtitle_line_count(dest)} lines")
         return dest
 
     target_codes = lang_code_to_ffprobe_codes(target_lang) if target_lang else ["rus", "ru", "russian"]
     info("Extracting subtitles from the video...")
     found = 0
     available = []
+    last_ffmpeg_err = ""
     try:
         result = subprocess.run(
             [
@@ -143,15 +266,14 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
             if lang in target_codes:
                 info(f"  Found subtitle stream #{idx} ({lang}), extracting...")
                 try:
-                    rc = subprocess.run(
-                        ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-map", f"0:{idx}", dest],
-                        check=False,
-                        capture_output=True,
-                    )
+                    extracted_ok, ffmpeg_err = _extract_subtitle_stream(video, idx, dest)
                 except OSError:
                     warn("ffmpeg is unavailable, so embedded subtitles could not be extracted")
                     break
-                if rc.returncode == 0 and os.path.isfile(dest) and os.path.getsize(dest) > 0:
+                if ffmpeg_err:
+                    last_ffmpeg_err = ffmpeg_err
+                if extracted_ok:
+                    _normalize_utf8(dest)
                     found = 1
                     break
 
@@ -174,17 +296,21 @@ def step_extract_subtitles(video: str, srt_file: str | None, tmpdir: str, target
 
     if not found:
         avail_str = ", ".join(f"#{idx} ({lang})" for idx, lang in available) if available else "no subtitle streams"
+        reason = ""
+        if last_ffmpeg_err:
+            reason = f"\nffmpeg said: {' '.join(last_ffmpeg_err.split())}"
         if target_lang:
             die(
                 f"Could not find subtitles for language '{target_lang}'. Available streams: {avail_str}. "
-                "Pass -s <file.srt> or choose another --lang value.",
+                f"Pass -s <file.srt> or choose another --lang value.{reason}",
                 EXIT_SUBTITLE_ERROR,
             )
         die(
-            f"Could not find Russian subtitles. Available streams: {avail_str}. Pass -s <file.srt>.",
+            f"Could not find Russian subtitles. Available streams: {avail_str}. "
+            f"Pass -s <file.srt>.{reason}",
             EXIT_SUBTITLE_ERROR,
         )
-    ok(f"Subtitles: {sum(1 for _ in open(dest, encoding='utf-8'))} lines")
+    ok(f"Subtitles: {_subtitle_line_count(dest)} lines")
     return dest
 
 
@@ -205,8 +331,7 @@ def step_sync_alass(video: str, subs_path: str, tmpdir: str) -> str:
 
 def step_parse_srt(subs_path: str, range_from: int | None, range_to: int | None) -> tuple[list[Entry], int]:
     info("Parsing subtitles...")
-    with open(subs_path, "r", encoding="utf-8") as handle:
-        subs = handle.read().lstrip("\ufeff")
+    subs = _read_subtitle_text(subs_path).lstrip("\ufeff")
     blocks = re.split(r"\n\s*\n", subs.strip())
     entries: list[Entry] = []
     for block in blocks:
