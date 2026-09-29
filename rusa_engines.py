@@ -12,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -252,10 +253,11 @@ def load_engine_configs() -> dict[str, dict]:
     configs: dict[str, dict] = dict(_BUNDLED_ENGINES)
 
     # Bundled engines file (optional override of the built-in defaults)
-    bundled = Path(__file__).parent / "engines.yaml"
-    if bundled.exists() and HAS_YAML:
+    bundled = files("rusa_data").joinpath("engines.yaml")
+    if bundled.is_file() and HAS_YAML:
         try:
-            data = _load_yaml(str(bundled))
+            with bundled.open("r", encoding="utf-8") as handle:
+                data = yaml.safe_load(handle) or {}
             configs.update(data.get("engines", {}))
         except Exception as exc:
             print(f"Warning: failed to load bundled engines: {exc}", file=sys.stderr)
@@ -286,3 +288,6 @@ def register_external_engines(configs: dict[str, dict] | None = None) -> None:
             {"name": engine_id, "_config": cfg},
         )
         register_backend(cls)
+
+
+register_external_engines()

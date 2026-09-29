@@ -44,7 +44,11 @@ BugTracker = "https://github.com/bortoq/rusa/issues"
 
 [tool.setuptools]
 py-modules = ["rusa", "rusa_audio", "rusa_cli", "rusa_engines", "rusa_mux", "rusa_shared", "rusa_subtitle", "rusa_tts"]
+packages = ["rusa_data"]
 include-package-data = true
+
+[tool.setuptools.package-data]
+rusa_data = ["*.yaml"]
 
 [tool.ruff]
 line-length = 100

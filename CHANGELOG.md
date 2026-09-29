@@ -1,6 +1,14 @@
 ## Unreleased
 
 ### Fixed
+- Bundle default and engine YAML configuration in the wheel so installed releases
+  can resolve audio codecs and built-in engines outside the source checkout.
+- Allow `rusa_engines` to be imported before `rusa_shared` without a circular
+  import failure.
+- Pass GitHub Action inputs through environment variables so shell metacharacters
+  in input paths cannot alter the action's Bash script.
+- Install rusa from the GitHub Action's checked-out revision instead of fetching
+  a potentially older PyPI release.
 - Embedded Russian subtitle streams encoded in legacy single-byte encodings
   (Windows-1251 / cp866 / KOI8-R) are now extracted correctly. ffmpeg is retried
   with `-sub_charenc`, and the ffmpeg error is surfaced when a stream still

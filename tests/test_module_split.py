@@ -1,6 +1,7 @@
 """Import-level regression tests for the split module layout."""
 
 import sys
+import subprocess
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +24,18 @@ def test_split_modules_import_cleanly():
     assert callable(rusa_subtitle.step_parse_srt)
     assert callable(rusa_tts.step_generate_tts)
     assert rusa.DEFAULT_VOICE == rusa_shared.DEFAULT_VOICE
+
+
+def test_engine_module_can_be_imported_first():
+    result = subprocess.run(
+        [sys.executable, "-c", "import rusa_engines, rusa_shared; "
+         "assert 'piper' in rusa_shared.BACKEND_REGISTRY"],
+        cwd=Path(__file__).parent.parent,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_thin_entrypoint_reexports_split_callables():

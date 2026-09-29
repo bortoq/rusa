@@ -24,7 +24,7 @@ Current priorities:
 - Docker support
 - GitHub Action support
 - subprocess-based CLI smoke tests
-- **all defaults extracted into `defaults.yaml`** — no hardcoded constants in Python code; user can override via `~/.config/rusa/config.yaml`
+- **all defaults extracted into `rusa_data/defaults.yaml`** — users can override them via `~/.config/rusa/config.yaml`
 - **auto-fit TTS speed per subtitle line** (`--speed auto[:max=N][:min=M]`) — each segment accelerated just enough to fit its timeslot
 
 ## Current technical debt
@@ -33,6 +33,34 @@ Current priorities:
 - keep README examples aligned with real CLI behavior
 - keep cross-platform behavior stable
 - keep fixture-dependent integration tests separate from fast offline checks
+
+## Audit backlog (2026-09-29)
+
+### Critical: release correctness
+
+- [x] Ship `defaults.yaml` and `engines.yaml` inside the wheel. Test the installed wheel from outside the checkout and assert that codecs and bundled engines load. A wheel without defaults has an empty codec map and cannot process a video.
+- [x] Remove the circular import between `rusa_shared` and `rusa_engines` found by the isolated wheel smoke test; both import orders must register bundled engines.
+
+### High: media correctness and CI security
+
+- [ ] Preserve every source stream by default. Audio is preserved, but subtitle `auto` can fall back to `drop`, only the first video stream is mapped, and data streams are omitted. Make stream removal explicit and fail clearly when a stream cannot be copied.
+- [x] Pass composite GitHub Action inputs through environment variables instead of interpolating expressions directly into Bash. Test paths containing shell metacharacters.
+- [x] Install the action's own checked-out revision instead of an unrelated PyPI release, so its workflow exercises the matching code.
+- [ ] Redesign AV1 copy preflight before TTS. The discarded draft compared a five-second output with the full source size and rejected valid large files. Validate video packets and the expected preview duration, and test a large AV1 input.
+
+### Medium: reliability and usability
+
+- [ ] Exercise muxing with long video and sparse subtitles, and measure peak memory with `-max_interleave_delta 0`. Check voiceover packet placement at several timestamps rather than only one point.
+- [ ] Fix preset flag detection: `-o` currently counts as an explicit `orig_vol` option, so presets can silently keep the wrong volume. Add exact-argument tests.
+- [ ] Validate user configuration and `--speed` values with actionable errors. Empty YAML and malformed auto-speed settings currently reach unchecked paths.
+- [ ] Preflight temporary disk space for long films and support RF64 or streamed audio assembly beyond the 32-bit WAV size limit.
+- [x] Expand installed-wheel CI smoke beyond `--version` and `--help` with an offline processing check.
+- [ ] Keep the changelog aligned with future fixes before each release.
+- [ ] Replace the long-lived PyPI API token in release CI with a narrowly scoped Trusted Publisher workflow and OIDC.
+
+### Low: maintenance
+
+- [ ] Address the existing full-Ruff findings in a separate cleanup, then widen the lint gate beyond its current syntax-only selection.
 
 ## Nice-to-have later
 

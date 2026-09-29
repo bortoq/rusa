@@ -2,7 +2,7 @@
 
 rusa supports three ways to use text-to-speech:
 
-1. **Built-in engines** (`--engine`) — declarative definitions in `engines.yaml`
+1. **Built-in engines** (`--engine`) — declarative definitions in `rusa_data/engines.yaml`
 2. **Custom command** (`--tts-cmd`) — arbitrary shell command with `{in}` `{out}` `{voice}`
 3. **Default Edge TTS** (no flag) — Microsoft Edge cloud TTS
 

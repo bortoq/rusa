@@ -15,6 +15,7 @@ import time
 import atexit
 import signal
 import platform
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,7 @@ except ImportError:
     yaml = None  # type: ignore[assignment]
 
 # ── Config from defaults.yaml ─────────────────────────────────────────
-_DEFAULTS_PATH = Path(__file__).parent / "defaults.yaml"
+_DEFAULTS_PATH = files("rusa_data").joinpath("defaults.yaml")
 _USER_CONFIG_PATH = Path.home() / ".config" / "rusa" / "config.yaml"
 
 def _load_config() -> dict:
@@ -43,10 +44,10 @@ def _load_config() -> dict:
     if not HAS_YAML:
         return config
     try:
-        with open(_DEFAULTS_PATH) as f:
+        with _DEFAULTS_PATH.open("r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
-    except (FileNotFoundError, yaml.YAMLError):
-        pass
+    except (FileNotFoundError, yaml.YAMLError) as exc:
+        raise RuntimeError("Bundled defaults.yaml is missing or invalid") from exc
     try:
         with open(_USER_CONFIG_PATH) as f:
             _deep_merge(config, yaml.safe_load(f))
@@ -851,10 +852,11 @@ register_backend(CustomCmdBackend)
 
 ### End TTS Backend abstraction ########################################
 
-# Register declarative external engines defined in engines.yaml / user config.
+# Import declarative engines so they register themselves. Importing
+# rusa_engines first must also work: during that path this import sees the
+# partially initialized module, which finishes registration afterward.
 try:
-    import rusa_engines
-    rusa_engines.register_external_engines()
+    import rusa_engines  # noqa: F401
 except ImportError:
     pass
 

@@ -20,7 +20,9 @@ rusa/
 ├── rusa_mux.py          # Mix, mux, codecs
 ├── rusa_engines.py      # TTS engine registry
 ├── rusa_shared.py       # Shared constants, cache, backends, helpers
-├── engines.yaml         # Declarative engine definitions
+├── rusa_data/           # Bundled YAML configuration in the wheel
+│   ├── defaults.yaml
+│   └── engines.yaml
 ├── README.md            # Main project documentation
 └── doc/
     ├── roadmap.md

@@ -75,6 +75,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Install ffmpeg
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
@@ -94,11 +99,27 @@ jobs:
       - name: Install built wheel
         run: pip install dist/*.whl
 
-      - name: Smoke check installed CLI
+      - name: Smoke check installed wheel outside the checkout
         run: |
+          cd "$RUNNER_TEMP"
           rusa --version
           rusa --help
-          rusa --doctor || true
+          ffmpeg -y -loglevel error -f lavfi -i 'color=c=black:s=64x64:r=10:d=3' -f lavfi -i 'sine=frequency=440:duration=3' -map 0:v:0 -map 1:a:0 -c:v mpeg4 -c:a aac source.mkv
+          ffmpeg -y -loglevel error -f lavfi -i 'sine=frequency=880:duration=3' -ac 2 -ar 48000 voice.wav
+          python - <<'PY'
+          from importlib.resources import files
+          from pathlib import Path
+          from rusa_engines import load_engine_configs
+          from rusa_mux import step_mix_output
+          from rusa_shared import CODEC_MAP
+
+          assert files("rusa_data").joinpath("defaults.yaml").is_file()
+          assert files("rusa_data").joinpath("engines.yaml").is_file()
+          assert {"aac", "opus"} <= set(CODEC_MAP)
+          assert "piper" in load_engine_configs()
+          step_mix_output("source.mkv", "voice.wav", "0.5", "1", "output.mkv", ".", "aac", "128", None, False)
+          assert Path("output.mkv").stat().st_size > 1000
+          PY
 
   lint:
     name: lightweight lint

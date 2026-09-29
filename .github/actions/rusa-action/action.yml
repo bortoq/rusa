@@ -49,44 +49,55 @@ runs:
       shell: bash
 
     - name: Install rusa
+      env:
+        RUSA_ACTION_PATH: ${{ github.action_path }}
       run: |
-        pip install rusa edge-tts tqdm langdetect
+        python -m pip install "$RUSA_ACTION_PATH/../../.."
       shell: bash
 
     - name: Run rusa
+      env:
+        RUSA_INPUT_VIDEO: ${{ inputs.video }}
+        RUSA_INPUT_SRT: ${{ inputs.srt }}
+        RUSA_INPUT_LANG: ${{ inputs.lang }}
+        RUSA_INPUT_VOICE: ${{ inputs.voice }}
+        RUSA_INPUT_TTS_CMD: ${{ inputs.tts_cmd }}
+        RUSA_INPUT_ENGINE: ${{ inputs.engine }}
+        RUSA_INPUT_SPEED: ${{ inputs.speed }}
+        RUSA_INPUT_OUTPUT: ${{ inputs.output }}
       run: |
         args=()
 
-        if [ -n "${{ inputs.srt }}" ]; then
-          args+=(-s "${{ inputs.srt }}")
+        if [ -n "$RUSA_INPUT_SRT" ]; then
+          args+=(-s "$RUSA_INPUT_SRT")
         fi
 
-        if [ -n "${{ inputs.lang }}" ]; then
-          args+=(--lang "${{ inputs.lang }}")
+        if [ -n "$RUSA_INPUT_LANG" ]; then
+          args+=(--lang "$RUSA_INPUT_LANG")
         fi
 
-        if [ -n "${{ inputs.voice }}" ]; then
-          args+=(--voice "${{ inputs.voice }}")
+        if [ -n "$RUSA_INPUT_VOICE" ]; then
+          args+=(--voice "$RUSA_INPUT_VOICE")
         fi
 
-        if [ -n "${{ inputs.tts_cmd }}" ]; then
-          args+=(--tts-cmd "${{ inputs.tts_cmd }}")
+        if [ -n "$RUSA_INPUT_TTS_CMD" ]; then
+          args+=(--tts-cmd "$RUSA_INPUT_TTS_CMD")
         fi
 
-        if [ -n "${{ inputs.engine }}" ] && [ "${{ inputs.engine }}" != "edge" ]; then
-          args+=(--engine "${{ inputs.engine }}")
+        if [ -n "$RUSA_INPUT_ENGINE" ] && [ "$RUSA_INPUT_ENGINE" != "edge" ]; then
+          args+=(--engine "$RUSA_INPUT_ENGINE")
         fi
 
-        if [ -n "${{ inputs.speed }}" ]; then
-          args+=(--speed "${{ inputs.speed }}")
+        if [ -n "$RUSA_INPUT_SPEED" ]; then
+          args+=(--speed "$RUSA_INPUT_SPEED")
         fi
 
-        if [ -n "${{ inputs.output }}" ]; then
-          args+=(-o "${{ inputs.output }}")
+        if [ -n "$RUSA_INPUT_OUTPUT" ]; then
+          args+=(-o "$RUSA_INPUT_OUTPUT")
         fi
 
         echo "::group::rusa output"
-        rusa "${args[@]}" "${{ inputs.video }}"
+        rusa "${args[@]}" "$RUSA_INPUT_VIDEO"
         echo "::endgroup::"
       shell: bash
 
