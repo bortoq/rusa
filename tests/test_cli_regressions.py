@@ -11,6 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
 
 
+@pytest.fixture(autouse=True)
+def single_audio_stream_for_mocked_mux(monkeypatch):
+    """Command tests use fake media; model their single source audio stream."""
+    monkeypatch.setattr(rusa.rusa_mux, "_probe_audio_stream_count", lambda _video: 1)
+
+
 class _StopMain(Exception):
     """Sentinel exception to stop main() after the target branch."""
 

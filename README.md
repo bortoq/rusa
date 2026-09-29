@@ -101,7 +101,7 @@ rusa --speed auto:max=2.0 movie.mkv
 4. Convert TTS output to WAV and trim silence
 5. Assemble all subtitle segments into one voiceover track
 6. Mix the voiceover with the original audio
-7. Encode the final output
+7. Encode the final output, keeping every original audio track and adding the voiceover as a new default track
 
 ---
 

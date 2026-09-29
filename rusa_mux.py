@@ -174,6 +174,62 @@ def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[st
     return plan, source_subtitle_codecs
 
 
+def _probe_audio_stream_count(video: str) -> int:
+    """Count source audio streams so the new track gets its own output index."""
+    rc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+         "stream=index", "-of", "csv=p=0", video],
+        check=False, capture_output=True, text=True,
+    )
+    if rc.returncode != 0:
+        die(f"Cannot inspect source audio streams: {rc.stderr.strip()}", EXIT_CODEC_ERROR)
+    indices = [line.strip() for line in rc.stdout.splitlines() if line.strip()]
+    if not indices or any(not index.isdecimal() for index in indices):
+        die("Cannot determine source audio stream count", EXIT_CODEC_ERROR)
+    return len(indices)
+
+
+def _packet_position(output: str, stream: str, seconds: float) -> int | None:
+    """Byte offset of a stream packet near a playback time."""
+    try:
+        rc = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", stream,
+             "-read_intervals", f"{seconds:.3f}%+1", "-show_entries", "packet=pos",
+             "-of", "csv=p=0", output],
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+        if rc.returncode == 0:
+            for line in rc.stdout.splitlines():
+                value = line.strip()
+                if value.isdecimal():
+                    return int(value)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _has_interleaved_voiceover(output: str, voiceover_index: int) -> bool:
+    """Reject files whose voiceover packets are far from matching video packets."""
+    try:
+        rc = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", output],
+            check=False, capture_output=True, text=True, timeout=30,
+        )
+        duration = float(rc.stdout.strip()) if rc.returncode == 0 else 0
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+    if duration <= 0:
+        return False
+    probe_at = min(60, duration / 2)
+    video_pos = _packet_position(output, "v:0", probe_at)
+    audio_pos = _packet_position(output, f"a:{voiceover_index}", probe_at)
+    if video_pos is None or audio_pos is None:
+        return False
+    max_gap = max(16 * 1024 * 1024, os.path.getsize(output) // 20)
+    return abs(audio_pos - video_pos) <= max_gap
+
+
 def _build_video_mux_cmd(
     video: str,
     source_audio: str,
@@ -185,21 +241,30 @@ def _build_video_mux_cmd(
     sidecar_srt: str | None = None,
     sidecar_lang: str = "und",
     n_source_subtitles: int = 0,
+    n_source_audio: int = 1,
 ) -> list[str]:
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", source_audio]
     if sidecar_srt:
         cmd.extend(["-i", sidecar_srt])
-    cmd.extend(["-map", "0:v", "-map", "0:a:0", "-map", "1:a"])
+    # Map only the primary video stream (0:v:0) to avoid mapping cover art / thumbnails as separate video tracks.
+    # Preserve attachments (cover, fonts) separately via 0:t?
+    cmd.extend(["-map", "0:v:0", "-map", "0:a", "-map", "1:a:0"])
     if subtitle_mode != "drop":
         cmd.extend(["-map", "0:s?"])
     if sidecar_srt:
         cmd.extend(["-map", "2:s"])
-    cmd.extend(["-c:v", "copy", "-c:a:0", "copy", "-c:a:1", ffmpeg_codec, "-b:a:1", bitrate_arg])
+    # Preserve attachments (e.g. cover.jpg) correctly, not as video streams
+    cmd.extend(["-map", "0:t?"])
+    cmd.extend(["-c:v", "copy"])
+    cmd.extend(["-c:a", "copy", f"-c:a:{n_source_audio}", ffmpeg_codec,
+                f"-b:a:{n_source_audio}", bitrate_arg])
+    # Keep the new audio packets near video packets with the same timestamp.
+    # Otherwise long Matroska files can put the entire voiceover at EOF; mpv
+    # then exhausts its video packet queue before finding any voiceover audio.
+    cmd.extend(["-max_interleave_delta", "0"])
     if subtitle_mode != "drop":
         cmd.extend(["-c:s", subtitle_mode])
     if sidecar_srt:
-        # Subtitle-stream index (0-based among subtitle streams in output)
-        # mkv approach: existing_sub_count + idx → sidecar is at n_source_subtitles
         sub_idx = n_source_subtitles
         cmd.extend([
             "-metadata:s:s:%d" % sub_idx,
@@ -207,15 +272,15 @@ def _build_video_mux_cmd(
             "-metadata:s:s:%d" % sub_idx,
             "title=%s" % _sidecar_title(sidecar_lang),
         ])
+    for audio_index in range(n_source_audio):
+        cmd.extend([f"-disposition:a:{audio_index}", "-default"])
     cmd.extend(
         [
-            "-disposition:a:0",
-            "none",
-            "-disposition:a:1",
+            f"-disposition:a:{n_source_audio}",
             "default",
-            "-metadata:s:a:1",
+            f"-metadata:s:a:{n_source_audio}",
             f"language={voiceover_lang}",
-            "-metadata:s:a:1",
+            f"-metadata:s:a:{n_source_audio}",
             "title=Voiceover",
             output,
         ]
@@ -292,9 +357,9 @@ def step_mix_output(
     info("Mixing audio...")
     mixed = os.path.join(tmpdir, "mixed.wav")
     filter_expr = (
-        f"[1:a]volume={orig_vol}[orig];"
+        f"[1:a:0]volume={orig_vol}[orig];"
         f"[2:a]volume={tts_vol}[tts];"
-        "[orig][tts]amix=inputs=2:duration=first:normalize=0[mixed]"
+        "[orig][tts]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mixed]"
     )
     rc = subprocess.run(
         ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", video, "-i", voiceover_wav, "-filter_complex", filter_expr, "-map", "[mixed]", "-ac", str(WAV_CHANNELS), "-ar", str(WAV_FRAMERATE), "-sample_fmt", "s16", mixed],
@@ -358,16 +423,20 @@ def step_mix_output(
         )
     else:
         subtitle_modes, source_subtitle_codec = _subtitle_mux_plan(video, output, subs_mode)
+        n_source_audio = _probe_audio_stream_count(video)
         last_err_text = ""
         for index, subtitle_mode in enumerate(subtitle_modes):
             n_subs = len(source_subtitle_codec) if isinstance(source_subtitle_codec, list) else 0
             rc = subprocess.run(
                 _build_video_mux_cmd(video, source, output, ffmpeg_codec, bitrate_arg, voiceover_lang, subtitle_mode,
-                    sidecar_srt=sidecar_srt, sidecar_lang=sidecar_lang, n_source_subtitles=n_subs),
+                    sidecar_srt=sidecar_srt, sidecar_lang=sidecar_lang, n_source_subtitles=n_subs,
+                    n_source_audio=n_source_audio),
                 check=False,
                 capture_output=True,
             )
             if rc.returncode == 0:
+                if os.path.getsize(output) >= 100 and not _has_interleaved_voiceover(output, n_source_audio):
+                    die("Voiceover packets are not interleaved with video; refusing an unplayable output", EXIT_CODEC_ERROR)
                 break
             last_err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
             remaining_modes = subtitle_modes[index + 1:]
