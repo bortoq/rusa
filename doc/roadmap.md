@@ -51,6 +51,7 @@ Current priorities:
 ### Medium: reliability and usability
 
 - [x] Exercise muxing with long video and sparse subtitles, and measure peak memory with `-max_interleave_delta 0`. Check voiceover packet placement at several timestamps rather than only one point.
+- [x] Handle long-GOP seeks in the packet-placement check: `ffprobe` starts short read intervals at an earlier keyframe, which caused a false failure on the real 7,138-second Pulse output.
 - [x] Fix preset flag detection: `-o` no longer counts as an explicit `orig_vol` option; exact-argument tests cover the precedence.
 - [x] Validate user configuration and `--speed` values with actionable errors, including malformed auto-speed settings.
 - [x] Preflight temporary disk space for long films and use RF64 when assembled PCM exceeds the 32-bit WAV size limit.

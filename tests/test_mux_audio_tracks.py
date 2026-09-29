@@ -103,6 +103,19 @@ def test_interleaving_check_rejects_late_packet_gap(monkeypatch, tmp_path):
     assert not rusa_mux._has_interleaved_voiceover(str(output), 2)
 
 
+def test_packet_position_uses_packet_near_requested_time_after_keyframe_seek(monkeypatch):
+    def fake_probe(cmd, **kwargs):
+        assert cmd[cmd.index("-read_intervals") + 1] == "6414.000%+40"
+        return subprocess.CompletedProcess(
+            cmd, 0,
+            stdout="6413.994,100\n6423.994,200\n6424.014,300\n6430.000,400\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(rusa_mux.subprocess, "run", fake_probe)
+    assert rusa_mux._packet_position("movie.mkv", "a:1", 6424) == 200
+
+
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="ffmpeg required")
 def test_mux_preserves_extra_video_subtitle_and_attachment(tmp_path):
     source = tmp_path / "source.mkv"
@@ -149,7 +162,7 @@ def test_long_video_with_sparse_subtitles_uses_bounded_mux_memory(tmp_path):
     subprocess.run([
         "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=2:d=120",
         "-f", "lavfi", "-i", "sine=frequency=440:duration=120", "-i", str(subtitles),
-        "-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "mpeg4", "-c:a", "aac", "-c:s", "srt",
+        "-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "mpeg4", "-g", "60", "-c:a", "aac", "-c:s", "srt",
         str(source),
     ], check=True, capture_output=True)
     subprocess.run([

@@ -233,17 +233,30 @@ def preflight_av1_copy(video: str, tmpdir: str) -> None:
 def _packet_position(output: str, stream: str, seconds: float) -> int | None:
     """Byte offset of a stream packet near a playback time."""
     try:
+        # ffprobe seeks to an earlier keyframe, then measures the interval
+        # length from that seek point. A one-second interval can end before
+        # `seconds` even when the requested stream has packets there.
+        start = max(0, seconds - 10)
         rc = subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", stream,
-             "-read_intervals", f"{seconds:.3f}%+1", "-show_entries", "packet=pos",
+             "-read_intervals", f"{start:.3f}%+40", "-show_entries", "packet=pts_time,pos",
              "-of", "csv=p=0", output],
             check=False, capture_output=True, text=True, timeout=30,
         )
         if rc.returncode == 0:
+            nearest: tuple[float, int] | None = None
             for line in rc.stdout.splitlines():
-                value = line.strip()
-                if value.isdecimal():
-                    return int(value)
+                pts, sep, position = line.strip().partition(",")
+                if not sep or not position.isdecimal():
+                    continue
+                try:
+                    distance = abs(float(pts) - seconds)
+                except ValueError:
+                    continue
+                if nearest is None or distance < nearest[0]:
+                    nearest = (distance, int(position))
+            if nearest is not None and nearest[0] <= 2:
+                return nearest[1]
     except (OSError, subprocess.TimeoutExpired):
         pass
     return None

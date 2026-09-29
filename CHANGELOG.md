@@ -1,6 +1,9 @@
 ## Unreleased
 
 ### Fixed
+- Avoid false "voiceover packets are not interleaved" failures on long videos with
+  distant keyframes. Probe a wider interval and compare packets nearest the
+  requested playback time.
 - Preserve all original video, audio, subtitle, attachment, and data streams when muxing. Subtitle `auto` now fails clearly when preservation is impossible; only `--subs-mode drop` removes subtitles.
 - Check AV1 stream-copy packets before TTS, including large source files, and verify voiceover interleaving at several points in the film.
 - Fix preset detection so `-o` no longer overrides the preset original-audio volume.
