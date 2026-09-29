@@ -1,5 +1,9 @@
 """Integration tests: run full pipeline on generated fixtures."""
-import sys, os, struct, wave, json, subprocess
+import sys
+import os
+import struct
+import wave
+import subprocess
 from pathlib import Path
 import pytest
 
@@ -251,6 +255,8 @@ def test_main_prints_timing_summary(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(rusa, "step_convert_wav", lambda *args, **kwargs: [(1, str(tmp_path / "line.wav"), 120.0)])
     monkeypatch.setattr(rusa, "step_assemble", lambda *args, **kwargs: str(tmp_path / "voiceover.wav"))
     monkeypatch.setattr(rusa, "step_mix_output", lambda *args, **kwargs: None)
+    monkeypatch.setattr(rusa.rusa_mux, "preflight_av1_copy", lambda *args, **kwargs: None)
+    monkeypatch.setattr(rusa, "_preflight_temp_space", lambda *args, **kwargs: None)
 
     ticks = iter([0.0, 1.0, 1.0, 3.5, 3.5, 4.0, 4.0, 5.25, 5.25, 6.0])
     monkeypatch.setattr(rusa.time, "perf_counter", lambda: next(ticks))
@@ -371,7 +377,6 @@ def test_wav_preserves_speech(fixtures_ready, tmp_path):
 
     tts_dir = tmp_path / "tts"
     tts_dir.mkdir()
-    from tests.conftest import make_sine_wav
 
     # Generate TTS for a multi-sentence phrase
     text = "Сезам, откройся. Проезжайте. Спасибо."

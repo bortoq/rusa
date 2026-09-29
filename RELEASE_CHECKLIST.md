@@ -7,7 +7,7 @@ Use this checklist before cutting a new release.
 - [ ] `python -m compileall -q .`
 - [ ] `pytest -q -m 'not slow and not live_tts'`
 - [ ] `pytest -q tests/test_cli_smoke.py`
-- [ ] `ruff check . --select E9,F63,F7,F82`
+- [ ] `ruff check .`
 - [ ] README examples still match actual CLI behavior
 - [ ] no known critical regressions in subtitle extraction, TTS, WAV conversion, muxing, or cache logic
 
@@ -27,6 +27,7 @@ Use this checklist before cutting a new release.
 
 ## Release
 
+- [ ] PyPI Trusted Publisher is configured for repository `bortoq/rusa`, workflow `test.yml`, environment `pypi`; GitHub environment `pypi` exists
 - [ ] create git tag: `git tag v0.X.Y && git push origin v0.X.Y`
 - [ ] CI publishes to PyPI automatically (publish job in `test.yml`)
 - [ ] create GitHub Release from tag: `gh release create v0.X.Y --generate-notes`

@@ -1,5 +1,6 @@
 """Tests for SRT parsing (step_parse_srt)."""
-import sys, os, textwrap
+import sys
+import textwrap
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa

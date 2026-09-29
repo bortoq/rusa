@@ -1,6 +1,12 @@
 ## Unreleased
 
 ### Fixed
+- Preserve all original video, audio, subtitle, attachment, and data streams when muxing. Subtitle `auto` now fails clearly when preservation is impossible; only `--subs-mode drop` removes subtitles.
+- Check AV1 stream-copy packets before TTS, including large source files, and verify voiceover interleaving at several points in the film.
+- Fix preset detection so `-o` no longer overrides the preset original-audio volume.
+- Reject malformed speed and user configuration values with setting-specific errors.
+- Preflight temporary disk space and assemble long voiceovers as RF64 when RIFF WAV would overflow.
+- Use scoped OIDC Trusted Publishing in release CI and run full Ruff checks.
 - Bundle default and engine YAML configuration in the wheel so installed releases
   can resolve audio codecs and built-in engines outside the source checkout.
 - Allow `rusa_engines` to be imported before `rusa_shared` without a circular

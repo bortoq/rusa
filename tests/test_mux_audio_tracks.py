@@ -1,13 +1,26 @@
 """Offline regression checks for audible voiceover and source-track preservation."""
 
 import json
+import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 import rusa
 import rusa_mux
+
+
+def test_mux_command_maps_every_source_stream_type():
+    cmd = rusa_mux._build_video_mux_cmd(
+        "source.mkv", "mixed.wav", "out.mkv", "aac", "128k", "rus", "copy", n_source_audio=2,
+    )
+    maps = [cmd[index + 1] for index, arg in enumerate(cmd[:-1]) if arg == "-map"]
+    assert maps == ["0:v", "0:a", "1:a:0", "0:s?", "0:t?", "0:d?"]
+    assert cmd[cmd.index("-c:d") + 1] == "copy"
+    assert cmd[cmd.index("-c:t") + 1] == "copy"
 
 
 @pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="ffmpeg required")
@@ -73,3 +86,89 @@ def test_interleaving_check_rejects_voiceover_at_end_of_large_movie(monkeypatch,
 
     positions["a:2"] = 29_000_000
     assert rusa_mux._has_interleaved_voiceover(str(output), 2)
+
+
+def test_interleaving_check_rejects_late_packet_gap(monkeypatch, tmp_path):
+    output = tmp_path / "movie.mkv"
+    with output.open("wb") as handle:
+        handle.truncate(1_000_000_000)
+    monkeypatch.setattr(rusa_mux.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout="6000\n"))
+
+    def packet_pos(_path, stream, seconds):
+        if seconds > 5000 and stream == "a:2":
+            return 900_000_000
+        return 10_000_000
+
+    monkeypatch.setattr(rusa_mux, "_packet_position", packet_pos)
+    assert not rusa_mux._has_interleaved_voiceover(str(output), 2)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="ffmpeg required")
+def test_mux_preserves_extra_video_subtitle_and_attachment(tmp_path):
+    source = tmp_path / "source.mkv"
+    voiceover = tmp_path / "voice.wav"
+    output = tmp_path / "output.mkv"
+    subtitles = tmp_path / "original.srt"
+    attachment = tmp_path / "font.txt"
+    subtitles.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n", encoding="utf-8")
+    attachment.write_text("font placeholder", encoding="utf-8")
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=c=black:s=64x64:r=10:d=3",
+        "-f", "lavfi", "-i", "color=c=red:s=32x32:r=10:d=3",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+        "-i", str(subtitles), "-map", "0:v", "-map", "1:v", "-map", "2:a", "-map", "3:s",
+        "-c:v", "mpeg4", "-c:a", "aac", "-c:s", "srt",
+        "-attach", str(attachment), "-metadata:s:t:0", "mimetype=text/plain", str(source),
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=3",
+        "-ac", "2", "-ar", "48000", str(voiceover),
+    ], check=True, capture_output=True)
+
+    rusa.step_mix_output(str(source), str(voiceover), "0.5", "1", str(output), str(tmp_path),
+                         "aac", "128", None, False)
+    probe = subprocess.run([
+        "ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "json", str(output),
+    ], check=True, capture_output=True, text=True)
+    types = [s["codec_type"] for s in json.loads(probe.stdout)["streams"]]
+    assert types.count("video") == 2
+    assert types.count("audio") == 2
+    assert types.count("subtitle") == 1
+    assert types.count("attachment") == 1
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not Path("/usr/bin/time").exists() or not shutil.which("ffmpeg"), reason="GNU time and ffmpeg required")
+def test_long_video_with_sparse_subtitles_uses_bounded_mux_memory(tmp_path):
+    source = tmp_path / "source.mkv"
+    voiceover = tmp_path / "voice.wav"
+    output = tmp_path / "output.mkv"
+    subtitles = tmp_path / "sparse.srt"
+    subtitles.write_text("1\n00:01:50,000 --> 00:01:51,000\nLate caption\n", encoding="utf-8")
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=2:d=120",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=120", "-i", str(subtitles),
+        "-map", "0:v", "-map", "1:a", "-map", "2:s", "-c:v", "mpeg4", "-c:a", "aac", "-c:s", "srt",
+        str(source),
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=120",
+        "-ac", "2", "-ar", "48000", str(voiceover),
+    ], check=True, capture_output=True)
+    memory_file = tmp_path / "maxrss-kib"
+    script = (
+        "from rusa_mux import step_mix_output; "
+        "import sys; "
+        "step_mix_output(sys.argv[1], sys.argv[2], '1', '1', sys.argv[3], sys.argv[4], 'aac', '128', None, False)"
+    )
+    # This test uses a separate process so GNU time measures only the mux pipeline.
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).parent.parent)}
+    subprocess.run([
+        "/usr/bin/time", "-f", "%M", "-o", str(memory_file), sys.executable, "-c", script,
+        str(source), str(voiceover), str(output), str(tmp_path),
+    ], check=True, capture_output=True, env=env)
+    peak_kib = int(memory_file.read_text().strip())
+    print(f"Mux peak RSS: {peak_kib} KiB")
+    assert peak_kib < 500_000
+    assert rusa_mux._has_interleaved_voiceover(str(output), 1)

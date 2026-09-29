@@ -7,12 +7,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
-import rusa_audio
 import rusa_cli
 import rusa_engines
 import rusa_mux
 import rusa_shared
-import rusa_tts
 
 
 # ── shell ────────────────────────────────────────────────────────────
@@ -290,8 +288,8 @@ class TestListVoices:
 
         rusa.list_voices("ru")
         captured = capsys.readouterr()
-        ru_lines = [l for l in captured.out.split("\n") if "ru-" in l.lower()]
-        en_lines = [l for l in captured.out.split("\n") if "en-" in l.lower()]
+        ru_lines = [line for line in captured.out.split("\n") if "ru-" in line.lower()]
+        en_lines = [line for line in captured.out.split("\n") if "en-" in line.lower()]
         assert len(ru_lines) >= 2
         assert len(en_lines) == 0
 
@@ -419,5 +417,4 @@ class TestCacheEviction:
         """_cache_max_size should return default when env is not a valid integer."""
         monkeypatch.setenv("RUSA_CACHE_MAX_SIZE", "not_a_number")
         assert rusa_shared._cache_max_size() == rusa_shared.DEFAULT_CACHE_MAX_SIZE
-
 

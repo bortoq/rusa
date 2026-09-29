@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate deterministic offline fixtures for regression testing."""
-import os, subprocess
+import os
+import subprocess
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
@@ -30,8 +31,8 @@ RU_TEXT = """Всеобщая декларация прав человека я�
 Каждый имеет право на свободу мысли, совести и религии.
 Каждый имеет право на свободу убеждений и на свободное их выражение."""
 
-EN_LINES = [l.strip() for l in EN_TEXT.strip().split("\n") if l.strip()]
-RU_LINES = [l.strip() for l in RU_TEXT.strip().split("\n") if l.strip()]
+EN_LINES = [line.strip() for line in EN_TEXT.strip().split("\n") if line.strip()]
+RU_LINES = [line.strip() for line in RU_TEXT.strip().split("\n") if line.strip()]
 
 assert len(EN_LINES) == len(RU_LINES), "EN and RU must have same number of lines"
 

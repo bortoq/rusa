@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """Audio conversion and assembly for rusa."""
-__all__ = ['step_convert_wav', 'step_assemble', 'compute_auto_speed', '_mp3_duration']
+from __future__ import annotations
+
 
 import os
 import shutil
@@ -15,7 +15,6 @@ from rusa_shared import (
     WAV_BPF,
     WAV_CHANNELS,
     WAV_FRAMERATE,
-    WAV_HEADER_SIZE,
     WAV_SAMPLEWIDTH,
     copy_into_cache,
     die,
@@ -92,6 +91,14 @@ def step_convert_wav(
     results: list[tuple[int, str, float]] = []
 
     def _tempo_filter(speed_val: float) -> str:
+        if speed_val < 0.5:
+            chain = []
+            remaining = speed_val
+            while remaining < 0.5:
+                chain.append("atempo=0.5")
+                remaining /= 0.5
+            chain.append(f"atempo={remaining:.6f}")
+            return ",".join(chain)
         if speed_val > 2.0:
             chain = []
             remaining = speed_val
@@ -185,6 +192,33 @@ def step_convert_wav(
     return results
 
 
+def _write_assembly_header(handle, use_rf64: bool) -> None:
+    handle.write(b"RF64" if use_rf64 else b"RIFF")
+    handle.write(struct.pack("<I", 0xFFFFFFFF if use_rf64 else 36))
+    handle.write(b"WAVE")
+    if use_rf64:
+        handle.write(b"ds64")
+        handle.write(struct.pack("<IQQQI", 28, 0, 0, 0, 0))
+    handle.write(b"fmt ")
+    handle.write(struct.pack(
+        "<IHHIIHH", 16, 1, WAV_CHANNELS, WAV_FRAMERATE,
+        WAV_BPF * WAV_FRAMERATE, WAV_BPF, WAV_SAMPLEWIDTH * 8,
+    ))
+    handle.write(b"data")
+    handle.write(struct.pack("<I", 0xFFFFFFFF if use_rf64 else 0))
+
+
+def _finish_assembly_header(handle, data_bytes: int, use_rf64: bool) -> None:
+    if use_rf64:
+        handle.seek(20)
+        handle.write(struct.pack("<QQQ", 72 + data_bytes, data_bytes, data_bytes // WAV_BPF))
+    else:
+        handle.seek(4)
+        handle.write(struct.pack("<I", 36 + data_bytes))
+        handle.seek(40)
+        handle.write(struct.pack("<I", data_bytes))
+
+
 def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]], tmpdir: str) -> str:
     out_path = os.path.join(tmpdir, "voiceover.wav")
     info("Assembling voiceover...")
@@ -203,6 +237,12 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
     if not segments:
         die("No audio segments are available for assembly")
     segments.sort(key=lambda seg: seg["start_ms"])
+    predicted_frames = 0
+    for seg in segments:
+        with wave.open(seg["path"], "rb") as segment_wav:
+            seg["frames"] = segment_wav.getnframes()
+        predicted_frames = max(predicted_frames, int(seg["start_ms"] * WAV_FRAMERATE / 1000)) + seg["frames"]
+    use_rf64 = 36 + predicted_frames * WAV_BPF > 0xFFFFFFFF
     max_end_ms = max(seg["start_ms"] + seg["duration_ms"] for seg in segments)
     print(f"  Segments: {len(segments)}, max duration: {max_end_ms / 1000:.0f}s")
     cur_frame = 0
@@ -210,24 +250,7 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
     chunk = 10 * 1024 * 1024
     zero_chunk = b"\x00" * chunk
     with open(out_path, "wb") as handle:
-        handle.write(b"RIFF")
-        handle.write(struct.pack("<I", 36))
-        handle.write(b"WAVE")
-        handle.write(b"fmt ")
-        handle.write(
-            struct.pack(
-                "<IHHIIHH",
-                16,
-                1,
-                WAV_CHANNELS,
-                WAV_FRAMERATE,
-                WAV_BPF * WAV_FRAMERATE,
-                WAV_BPF,
-                WAV_SAMPLEWIDTH * 8,
-            )
-        )
-        handle.write(b"data")
-        handle.write(struct.pack("<I", 0))
+        _write_assembly_header(handle, use_rf64)
 
         for index, seg in enumerate(segments, 1):
             start_frame = int(seg["start_ms"] * WAV_FRAMERATE / 1000)
@@ -250,10 +273,7 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
                 print(f"    ... {index}/{len(segments)}")
 
         actual_data_bytes = cur_frame * WAV_BPF
-        handle.seek(4)
-        handle.write(struct.pack("<I", 36 + actual_data_bytes))
-        handle.seek(40)
-        handle.write(struct.pack("<I", actual_data_bytes))
+        _finish_assembly_header(handle, actual_data_bytes, use_rf64)
 
     if overlaps:
         pct = overlaps * 100 // len(segments)
@@ -263,3 +283,5 @@ def step_assemble(entries: list[dict], wav_results: list[tuple[int, str, float]]
     print(f"  Voiceover: {os.path.getsize(out_path) / 1024 / 1024:.0f} MB")
     ok("Voiceover assembled")
     return out_path
+
+__all__ = ['step_convert_wav', 'step_assemble', 'compute_auto_speed', '_mp3_duration']

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-__all__ = ['step_assemble', 'step_convert_wav', 'list_voices', '_check_ffmpeg_codec', '_get_codec', 'step_mix_output', 'CODEC_MAP', 'DEFAULT_ORIG_VOL', 'DEFAULT_SPEED', 'DEFAULT_SUBS_MODE', 'DEFAULT_THREADS', 'DEFAULT_TTS_VOL', 'DEFAULT_VOICE', 'EXIT_CODEC_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_RUNTIME_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_USAGE_ERROR', 'HAS_LANGDETECT', 'HAS_TQDM', 'LANG_VOICE_MAP', 'WAV_BPF', 'WAV_CHANNELS', 'WAV_FRAMERATE', 'WAV_HEADER_SIZE', 'WAV_SAMPLEWIDTH', 'clear_cache', 'copy_into_cache', 'die', 'err', 'file_sha256', 'info', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'ok', 'print_cache_stats', 'print_timing_summary', 'tts_cache_dir', 'voice_to_lang_code', 'wav_cache_dir', 'warn', 'which', 'detect_language_from_srt', 'step_extract_subtitles', 'step_parse_srt', 'step_sync_alass', '_split_text', 'step_generate_tts', 'main']
 """rusa — CLI voiceover for movies and other videos.
 
 Public API: all commonly-used names are re-exported from submodules.
 Tests and external code should access everything through ``rusa.*``.
 """
+from __future__ import annotations
+
 
 import argparse
+import math
 import os
 import re
 import shutil
@@ -18,7 +19,7 @@ import signal
 import tempfile
 import time
 
-import rusa_audio
+import rusa_audio  # noqa: F401 - public module reference
 import rusa_mux
 import rusa_shared
 from rusa_audio import compute_auto_speed, step_assemble, step_convert_wav
@@ -85,15 +86,10 @@ def _explicit_flag(name: str, argv: list[str] | None = None) -> bool:
     Uses sys.argv if argv is None (production), or a custom list (tests).
     """
     args_to_check = argv if argv is not None else sys.argv[1:]
-    for a in args_to_check:
-        if a.startswith('--'):
-            if a.startswith(f'--{name}') or a.startswith(f'--{name.replace("_","-")}'):
-                return True
-        elif a.startswith('-') and not a.startswith('--'):
-            # short flags: -o, -s
-            if a[1:] == name[:1]:
-                return True
-    return False
+    long_name = f"--{name.replace('_', '-')}"
+    short_name = {"output": "-o", "srt": "-s"}.get(name)
+    return any(a == long_name or a.startswith(f"{long_name}=") or
+               (short_name is not None and a == short_name) for a in args_to_check)
 
 
 def _parse_speed(raw: str) -> str:
@@ -104,18 +100,42 @@ def _parse_speed(raw: str) -> str:
     Sets module-level globals ``_AUTO_SPEED``, ``_AUTO_MAX``, ``_AUTO_MIN``.
     """
     global _AUTO_SPEED, _AUTO_MAX, _AUTO_MIN
+    if not isinstance(raw, str):
+        raw = str(raw)
     if raw.lower().startswith("auto"):
-        _AUTO_SPEED = True
         params = raw.lower().split(":")
+        if params[0] != "auto":
+            die("Invalid --speed. Use a positive number or auto[:max=N][:min=N].", EXIT_USAGE_ERROR)
+        maximum = float(_cfg("auto_speed", "max", default=1.5))
+        minimum = float(_cfg("auto_speed", "min", default=0.8))
+        seen = set()
         for p in params[1:]:
-            if p.startswith("max="):
-                _AUTO_MAX = float(p[4:])
-            elif p.startswith("min="):
-                _AUTO_MIN = float(p[4:])
+            key, sep, value = p.partition("=")
+            if not sep or key not in {"max", "min"} or key in seen:
+                die("Invalid --speed. Use auto[:max=N][:min=N] with each setting once.", EXIT_USAGE_ERROR)
+            seen.add(key)
+            try:
+                number = float(value)
+            except ValueError:
+                die(f"Invalid --speed {key}: {value!r}; expected a positive number.", EXIT_USAGE_ERROR)
+            if not math.isfinite(number) or not 0.01 <= number <= 100:
+                die(f"Invalid --speed {key}: expected a number from 0.01 to 100.", EXIT_USAGE_ERROR)
+            if key == "max":
+                maximum = number
+            else:
+                minimum = number
+        if minimum > maximum:
+            die("Invalid --speed: min cannot exceed max.", EXIT_USAGE_ERROR)
+        _AUTO_SPEED, _AUTO_MAX, _AUTO_MIN = True, maximum, minimum
         label = f"auto (max={_AUTO_MAX}x, min={_AUTO_MIN}x)" if _AUTO_MIN != 0.8 else f"auto (max={_AUTO_MAX}x)"
         return label
+    try:
+        speed = float(raw)
+    except ValueError:
+        die(f"Invalid --speed {raw!r}; expected a positive number or auto[:max=N][:min=N].", EXIT_USAGE_ERROR)
+    if not math.isfinite(speed) or not 0.01 <= speed <= 100:
+        die("Invalid --speed: expected a finite number from 0.01 to 100.", EXIT_USAGE_ERROR)
     _AUTO_SPEED = False
-    _AUTO_MIN = 0.0  # unused
     return f"{raw}x"
 
 
@@ -205,6 +225,27 @@ def _print_dry_run(args, backend_cls, voice, target_lang, output, entries):
             text += "..."
         print(f"  #{entry['idx']} [{entry['start_ms']}ms]: {text}")
     sys.exit(0)
+
+
+def _preflight_temp_space(video: str, tmpdir: str, entries: list[dict], normalize: str | None) -> None:
+    """Estimate peak PCM space before requesting TTS for a long film."""
+    last_subtitle_seconds = max(entry["end_ms"] for entry in entries) / 1000
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video],
+        check=False, capture_output=True, text=True,
+    )
+    try:
+        video_seconds = float(probe.stdout.strip()) if probe.returncode == 0 else 0
+    except ValueError:
+        video_seconds = 0
+    duration = max(last_subtitle_seconds, video_seconds)
+    # voiceover.wav, mixed.wav, optional normalized.wav, and converted TTS segments.
+    pcm_copies = 4 if normalize else 3
+    required = int(duration * WAV_FRAMERATE * WAV_BPF * pcm_copies * 1.1)
+    available = shutil.disk_usage(tmpdir).free
+    if required > available:
+        die(f"Temporary directory needs about {required / 2**30:.1f} GiB, "
+            f"but only {available / 2**30:.1f} GiB is free. Set TMPDIR to a larger disk.", EXIT_RUNTIME_ERROR)
 
 
 def main(args: argparse.Namespace | None = None) -> None:
@@ -400,6 +441,10 @@ def main(args: argparse.Namespace | None = None) -> None:
                     info(f"Merged {merged_count - len(entries)} split subtitle lines")
             timings.append(("subtitles", time.perf_counter() - started))
 
+            if not args.audio_only:
+                rusa_mux.preflight_av1_copy(video, tmpdir)
+            _preflight_temp_space(video, tmpdir, entries, normalize)
+
             started = time.perf_counter()
             tts_results = step_generate_tts(entries, voice, args.threads, tmpdir, backend_cls.name)
             timings.append(("tts", time.perf_counter() - started))
@@ -461,3 +506,5 @@ def main(args: argparse.Namespace | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+
+__all__ = ['step_assemble', 'step_convert_wav', 'list_voices', '_check_ffmpeg_codec', '_get_codec', 'step_mix_output', 'CODEC_MAP', 'DEFAULT_ORIG_VOL', 'DEFAULT_SPEED', 'DEFAULT_SUBS_MODE', 'DEFAULT_THREADS', 'DEFAULT_TTS_VOL', 'DEFAULT_VOICE', 'EXIT_CODEC_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_RUNTIME_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_USAGE_ERROR', 'HAS_LANGDETECT', 'HAS_TQDM', 'LANG_VOICE_MAP', 'WAV_BPF', 'WAV_CHANNELS', 'WAV_FRAMERATE', 'WAV_HEADER_SIZE', 'WAV_SAMPLEWIDTH', 'clear_cache', 'copy_into_cache', 'die', 'err', 'file_sha256', 'info', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'ok', 'print_cache_stats', 'print_timing_summary', 'tts_cache_dir', 'voice_to_lang_code', 'wav_cache_dir', 'warn', 'which', 'detect_language_from_srt', 'step_extract_subtitles', 'step_parse_srt', 'step_sync_alass', '_split_text', 'step_generate_tts', 'main']

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """TTS generation helpers for rusa."""
-__all__ = ['_split_text', 'step_generate_tts']
+from __future__ import annotations
+
 
 import os
 import re
@@ -162,3 +162,5 @@ def step_generate_tts(entries: list[dict], voice: str, threads: int, tmpdir: str
     if not results:
         die("Could not generate any TTS files")
     return results
+
+__all__ = ['_split_text', 'step_generate_tts']

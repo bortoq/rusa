@@ -43,24 +43,24 @@ Current priorities:
 
 ### High: media correctness and CI security
 
-- [ ] Preserve every source stream by default. Audio is preserved, but subtitle `auto` can fall back to `drop`, only the first video stream is mapped, and data streams are omitted. Make stream removal explicit and fail clearly when a stream cannot be copied.
+- [x] Preserve every source stream by default. Map all source video, audio, subtitle, attachment, and data streams; fail if a stream cannot be kept. Subtitle removal requires `--subs-mode drop`.
 - [x] Pass composite GitHub Action inputs through environment variables instead of interpolating expressions directly into Bash. Test paths containing shell metacharacters.
 - [x] Install the action's own checked-out revision instead of an unrelated PyPI release, so its workflow exercises the matching code.
-- [ ] Redesign AV1 copy preflight before TTS. The discarded draft compared a five-second output with the full source size and rejected valid large files. Validate video packets and the expected preview duration, and test a large AV1 input.
+- [x] Redesign AV1 copy preflight before TTS. Validate video packet count and the first five seconds of packet timestamps; test a source larger than 50 MiB.
 
 ### Medium: reliability and usability
 
-- [ ] Exercise muxing with long video and sparse subtitles, and measure peak memory with `-max_interleave_delta 0`. Check voiceover packet placement at several timestamps rather than only one point.
-- [ ] Fix preset flag detection: `-o` currently counts as an explicit `orig_vol` option, so presets can silently keep the wrong volume. Add exact-argument tests.
-- [ ] Validate user configuration and `--speed` values with actionable errors. Empty YAML and malformed auto-speed settings currently reach unchecked paths.
-- [ ] Preflight temporary disk space for long films and support RF64 or streamed audio assembly beyond the 32-bit WAV size limit.
+- [x] Exercise muxing with long video and sparse subtitles, and measure peak memory with `-max_interleave_delta 0`. Check voiceover packet placement at several timestamps rather than only one point.
+- [x] Fix preset flag detection: `-o` no longer counts as an explicit `orig_vol` option; exact-argument tests cover the precedence.
+- [x] Validate user configuration and `--speed` values with actionable errors, including malformed auto-speed settings.
+- [x] Preflight temporary disk space for long films and use RF64 when assembled PCM exceeds the 32-bit WAV size limit.
 - [x] Expand installed-wheel CI smoke beyond `--version` and `--help` with an offline processing check.
-- [ ] Keep the changelog aligned with future fixes before each release.
-- [ ] Replace the long-lived PyPI API token in release CI with a narrowly scoped Trusted Publisher workflow and OIDC.
+- [x] Keep the changelog aligned with these fixes and require an update in the release checklist.
+- [x] Replace the long-lived PyPI API token in release CI with a job-scoped OIDC Trusted Publisher workflow. PyPI account-side publisher configuration remains a release setup step.
 
 ### Low: maintenance
 
-- [ ] Address the existing full-Ruff findings in a separate cleanup, then widen the lint gate beyond its current syntax-only selection.
+- [x] Address the existing full-Ruff findings and run the complete default Ruff check in CI.
 
 ## Nice-to-have later
 

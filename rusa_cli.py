@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """CLI parser and voice-listing helpers for rusa."""
-__all__ = ["build_parser", "list_voices"]
+from __future__ import annotations
+
 
 import argparse
 import sys
@@ -169,3 +169,5 @@ def list_voices(lang: str | None = None, engine: str | None = None) -> None:
         print(f"  (no voices found for engine '{engine}', or its binary is missing from PATH)")
 
     sys.exit(0)
+
+__all__ = ["build_parser", "list_voices"]

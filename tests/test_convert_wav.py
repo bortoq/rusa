@@ -8,13 +8,11 @@ import time
 from pathlib import Path
 import wave
 
-import pytest
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
 import rusa_audio
-import rusa_shared
 
 
 def _write_test_wav(path: str, duration_ms: int = 120) -> None:

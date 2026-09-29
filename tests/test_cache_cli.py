@@ -1,6 +1,5 @@
 """Tests for cache management CLI flags."""
 
-import os
 from pathlib import Path
 
 import pytest

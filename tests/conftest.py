@@ -1,11 +1,9 @@
 """pytest fixtures for rusa tests."""
-import os
 import shutil
 import struct
 import subprocess
 import sys
 import textwrap
-import wave
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,7 +11,6 @@ import pytest
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import rusa
 
 # Paths
 TESTS_DIR = Path(__file__).parent
@@ -85,7 +82,6 @@ def make_sine_wav(path: str, duration_ms: int = 1000,
     """Create a WAV file with a sine tone. Returns path."""
     import math
     nframes = int(duration_ms * framerate / 1000)
-    bpf = 2 * 2  # 2 channels * 2 bytes
     data = b""
     for frame in range(nframes):
         t = frame / framerate

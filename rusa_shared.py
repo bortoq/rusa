@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """Shared constants, optional deps, utilities, and cache helpers for rusa."""
-__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "print_doctor_report", "_save_terminal", "_restore_terminal"]
+from __future__ import annotations
 
+
+import abc
 import hashlib
-import json
+import math
 import os
-import re
 import shlex
 import shutil
 import subprocess
 import sys
 import time
-import atexit
-import signal
 import platform
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
 
 try:
     import termios
@@ -45,14 +42,41 @@ def _load_config() -> dict:
         return config
     try:
         with _DEFAULTS_PATH.open("r", encoding="utf-8") as f:
-            config = yaml.safe_load(f) or {}
+            config = yaml.safe_load(f)
     except (FileNotFoundError, yaml.YAMLError) as exc:
         raise RuntimeError("Bundled defaults.yaml is missing or invalid") from exc
+    if not isinstance(config, dict):
+        raise RuntimeError("Bundled defaults.yaml must contain a mapping")
     try:
-        with open(_USER_CONFIG_PATH) as f:
-            _deep_merge(config, yaml.safe_load(f))
-    except (FileNotFoundError, yaml.YAMLError):
-        pass
+        with open(_USER_CONFIG_PATH, encoding="utf-8") as f:
+            overrides = yaml.safe_load(f)
+    except FileNotFoundError:
+        overrides = {}
+    except yaml.YAMLError as exc:
+        raise RuntimeError(f"Invalid YAML in {_USER_CONFIG_PATH}: {exc}") from exc
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise RuntimeError(f"{_USER_CONFIG_PATH} must contain a mapping of settings")
+    _deep_merge(config, overrides)
+    for key in ("audio", "codecs", "presets", "auto_speed"):
+        if not isinstance(config.get(key), dict):
+            raise RuntimeError(f"{_USER_CONFIG_PATH}: '{key}' must be a mapping")
+    for name, codec in config["codecs"].items():
+        if not isinstance(codec, dict):
+            raise RuntimeError(f"{_USER_CONFIG_PATH}: 'codecs.{name}' must be a mapping")
+    for name, preset in config["presets"].items():
+        if not isinstance(preset, dict):
+            raise RuntimeError(f"{_USER_CONFIG_PATH}: 'presets.{name}' must be a mapping")
+    for key in ("min", "max"):
+        try:
+            number = float(config["auto_speed"][key])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(f"{_USER_CONFIG_PATH}: 'auto_speed.{key}' must be a positive number") from exc
+        if not math.isfinite(number) or not 0.01 <= number <= 100:
+            raise RuntimeError(f"{_USER_CONFIG_PATH}: 'auto_speed.{key}' must be a finite number from 0.01 to 100")
+    if float(config["auto_speed"]["min"]) > float(config["auto_speed"]["max"]):
+        raise RuntimeError(f"{_USER_CONFIG_PATH}: 'auto_speed.min' cannot exceed 'auto_speed.max'")
     return config
 
 
@@ -649,10 +673,6 @@ def print_doctor_report() -> None:
 
 ### TTS Backend abstraction ###########################################
 
-import abc
-import typing
-
-
 class TtsBackend(abc.ABC):
     """Base class for TTS backends. Subclasses register themselves in BACKEND_REGISTRY."""
     name: str = ""
@@ -908,3 +928,5 @@ def _term_handler(signum: int, frame: object) -> None:
 
 
 ### End terminal guard ##############################################
+
+__all__ = ['HAS_TQDM', 'HAS_LANGDETECT', 'tqdm', 'detect', 'LangDetectException', 'DEFAULT_VOICE', 'DEFAULT_SPEED', 'DEFAULT_ORIG_VOL', 'DEFAULT_TTS_VOL', 'DEFAULT_THREADS', 'MAX_TTS_CHARS', 'WAV_FILTER_VERSION', 'DEFAULT_SUBS_MODE', 'EXIT_RUNTIME_ERROR', 'EXIT_USAGE_ERROR', 'EXIT_DEPENDENCY_ERROR', 'EXIT_SUBTITLE_ERROR', 'EXIT_CODEC_ERROR', 'CODEC_MAP', 'LANG_VOICE_MAP', 'LANG_FFPROBE_MAP', 'FFPROBE_TO_ISO6391', 'RED', 'GREEN', 'YELLOW', 'CYAN', 'NC', 'WAV_CHANNELS', 'WAV_SAMPLEWIDTH', 'WAV_FRAMERATE', 'WAV_BPF', 'WAV_HEADER_SIZE', 'voice_to_lang_code', 'lang_code_to_ffprobe_codes', 'normalize_lang_code', 'info', 'ok', 'warn', 'err', 'die', 'which', 'python_executable', 'python_module_cmd', 'shell', 'shell_ok', 'cache_enabled', 'cache_root_dir', 'cache_subdir', 'tts_cache_dir', 'tts_cache_path', 'copy_into_cache', 'wav_cache_dir', 'file_sha256', 'wav_cache_path', 'cache_bucket_stats', 'format_bytes', 'print_cache_stats', 'clear_cache', 'print_timing_summary', "print_doctor_report", "_save_terminal", "_restore_terminal"]

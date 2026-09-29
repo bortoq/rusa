@@ -560,8 +560,8 @@ def test_step_mix_output_subs_mode_convert_uses_srt_for_mkv(monkeypatch, tmp_pat
     assert subtitle_codecs == ["srt"]
 
 
-def test_step_mix_output_subs_mode_auto_falls_back_copy_convert_drop(monkeypatch, tmp_path):
-    """auto mode should retain convert -> drop fallback when preflight rules out copy."""
+def test_step_mix_output_subs_mode_auto_fails_instead_of_dropping_subtitles(monkeypatch, tmp_path, capsys):
+    """auto mode must fail if preserving subtitles proves impossible."""
     video = tmp_path / "input.mp4"
     voiceover = tmp_path / "voiceover.wav"
     output = tmp_path / "output.mkv"
@@ -604,7 +604,8 @@ def test_step_mix_output_subs_mode_auto_falls_back_copy_convert_drop(monkeypatch
 
     monkeypatch.setattr(rusa.subprocess, "run", fake_run)
 
-    rusa.step_mix_output(
+    with pytest.raises(SystemExit):
+        rusa.step_mix_output(
         str(video),
         str(voiceover),
         rusa.DEFAULT_ORIG_VOL,
@@ -616,7 +617,7 @@ def test_step_mix_output_subs_mode_auto_falls_back_copy_convert_drop(monkeypatch
         None,
         False,
         subs_mode="auto",
-    )
+        )
 
     subtitle_steps = []
     for cmd in calls:
@@ -626,10 +627,11 @@ def test_step_mix_output_subs_mode_auto_falls_back_copy_convert_drop(monkeypatch
             subtitle_steps.append(cmd[cmd.index("-c:s") + 1])
         else:
             subtitle_steps.append("drop")
-    assert subtitle_steps == ["srt", "drop"]
+    assert subtitle_steps == ["srt"]
+    assert "--subs-mode drop" in capsys.readouterr().err
 
 
-def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompatible(monkeypatch, tmp_path):
+def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompatible(monkeypatch, tmp_path, capsys):
     """auto mode should plan around incompatible mapped subtitle streams before mux retry."""
     video = tmp_path / "input.mkv"
     voiceover = tmp_path / "voiceover.wav"
@@ -663,7 +665,8 @@ def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompat
 
     monkeypatch.setattr(rusa.subprocess, "run", fake_run)
 
-    rusa.step_mix_output(
+    with pytest.raises(SystemExit):
+        rusa.step_mix_output(
         str(video),
         str(voiceover),
         rusa.DEFAULT_ORIG_VOL,
@@ -675,7 +678,7 @@ def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompat
         None,
         False,
         subs_mode="auto",
-    )
+        )
 
     subtitle_steps = []
     for cmd in calls:
@@ -685,7 +688,8 @@ def test_step_mix_output_subs_mode_auto_skips_copy_when_later_stream_is_incompat
             subtitle_steps.append(cmd[cmd.index("-c:s") + 1])
         else:
             subtitle_steps.append("drop")
-    assert subtitle_steps == ["srt", "drop"]
+    assert subtitle_steps == ["srt"]
+    assert "--subs-mode drop" in capsys.readouterr().err
 
 
 def test_step_mix_output_codec_error_lists_alternatives(monkeypatch, tmp_path, capsys):
@@ -965,3 +969,34 @@ class TestPreset:
         _apply_preset(args, ["--preset", "cinema", "--speed", "2.5", "movie.mkv"])
         # cinema preset has speed=1.3, but user said --speed 2.5
         assert args.speed == "2.5"
+
+    def test_output_short_flag_does_not_block_cinema_volume(self):
+        from rusa import _apply_preset, _get_parser
+
+        argv = ["--preset", "cinema", "-o", "dubbed.mkv", "movie.mkv"]
+        args = _get_parser().parse_args(argv)
+        _apply_preset(args, argv)
+        assert args.orig_vol == 0.50
+
+    def test_explicit_original_volume_wins(self):
+        from rusa import _apply_preset, _get_parser
+
+        argv = ["--preset", "cinema", "--orig-vol=0.2", "movie.mkv"]
+        args = _get_parser().parse_args(argv)
+        _apply_preset(args, argv)
+        assert args.orig_vol == "0.2"
+
+
+@pytest.mark.parametrize("speed", ["0", "-1", "nan", "inf", "auto:wat=2", "auto:min=2:max=1", "auto:max=0", "autoish"])
+def test_invalid_speed_is_usage_error(speed, capsys):
+    with pytest.raises(SystemExit) as exc:
+        rusa._parse_speed(speed)
+    assert exc.value.code == rusa.EXIT_USAGE_ERROR
+    assert "--speed" in capsys.readouterr().err
+
+
+def test_auto_speed_resets_omitted_bounds():
+    rusa._parse_speed("auto:max=3:min=0.5")
+    rusa._parse_speed("auto")
+    assert rusa._AUTO_MAX == rusa._cfg("auto_speed", "max")
+    assert rusa._AUTO_MIN == rusa._cfg("auto_speed", "min")

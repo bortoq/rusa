@@ -1,5 +1,5 @@
 """Tests for language detection (detect_language_from_srt)."""
-import sys, os
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa

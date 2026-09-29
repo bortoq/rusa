@@ -122,7 +122,7 @@ jobs:
           PY
 
   lint:
-    name: lightweight lint
+    name: lint
     runs-on: ubuntu-latest
 
     steps:
@@ -138,8 +138,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install ruff
 
-      - name: Run lightweight lint
-        run: ruff check . --select E9,F63,F7,F82
+      - name: Run lint
+        run: ruff check .
 
   docker-smoke:
     name: docker smoke
@@ -166,6 +166,10 @@ jobs:
       - lint
       - docker-smoke
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v7
@@ -184,7 +188,4 @@ jobs:
         run: python -m build
 
       - name: Publish to PyPI
-        run: twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        uses: pypa/gh-action-pypi-publish@release/v1

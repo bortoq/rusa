@@ -179,9 +179,9 @@ More details:
 
 | Mode | Result |
 | --- | --- |
-| default | video + original audio + voiceover |
+| default | video + all original streams + voiceover |
 | `--audio-only` | audio file only |
-| `--subs-mode auto` | try copy, then convert, then drop subtitles if needed |
+| `--subs-mode auto` | try copy, then convert; fail if subtitles cannot be kept |
 | `--subs-mode copy` | keep subtitles as-is or fail |
 | `--subs-mode convert` | convert subtitles to a compatible text format |
 | `--subs-mode drop` | write output without subtitles |
@@ -279,7 +279,7 @@ Subtitle codec mov_text ... is not supported
 
 then:
 
-- `--subs-mode auto` will try fallback modes automatically
+- `--subs-mode auto` tries copy and compatible conversion, then fails if subtitles cannot be kept
 - `--subs-mode copy` fails early
 - `--subs-mode convert` writes a compatible text subtitle format directly
 - `--subs-mode drop` writes the file without subtitles

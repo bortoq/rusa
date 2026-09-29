@@ -1,12 +1,16 @@
 """Tests for voiceover assembly (step_assemble)."""
 import os
+import io
+import shutil
 import struct
+import subprocess
 import sys
 import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import rusa
+import rusa_audio
 from tests.conftest import make_sine_wav
 
 
@@ -37,6 +41,32 @@ def test_assemble_wav_header_integrity(sample_entries, sample_wav_results, tmp_p
     assert 44 + data_size == file_size, (
         f"WAV header mismatch: header says {44+data_size}, file is {file_size}"
     )
+
+
+def test_rf64_header_supports_data_sizes_over_4gib():
+    output = io.BytesIO()
+    rusa_audio._write_assembly_header(output, True)
+    rusa_audio._finish_assembly_header(output, 0x100000000, True)
+    raw = output.getvalue()
+    assert raw[:4] == b"RF64"
+    assert struct.unpack_from("<QQQ", raw, 20) == (
+        0x100000000 + 72, 0x100000000, 0x100000000 // rusa.WAV_BPF,
+    )
+
+
+def test_ffmpeg_reads_rf64_assembly_header(tmp_path):
+    if not shutil.which("ffprobe"):
+        return
+    output = tmp_path / "voiceover.wav"
+    with output.open("wb") as handle:
+        rusa_audio._write_assembly_header(handle, True)
+        handle.write(b"\x00" * (rusa.WAV_FRAMERATE * rusa.WAV_BPF))
+        rusa_audio._finish_assembly_header(handle, rusa.WAV_FRAMERATE * rusa.WAV_BPF, True)
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(output)],
+        check=True, capture_output=True, text=True,
+    )
+    assert float(probe.stdout) == 1.0
 
 
 def test_assemble_with_overlap(overlapping_entries, overlapping_wav_results, tmp_path):
@@ -93,7 +123,7 @@ def test_assemble_cascade_shifts_segments(tmp_path):
             for j in range(0, min(40, len(data)), 2)
         )
         assert max_val_shifted > 100, (
-            f"Seg 2 should be cascade-shifted to ~3000ms but no audio found"
+            "Seg 2 should be cascade-shifted to ~3000ms but no audio found"
         )
 
         # Segment 2 should NOT be at its original 1000ms position
@@ -108,7 +138,7 @@ def test_assemble_cascade_shifts_segments(tmp_path):
         # At 1000ms, only segment 1's audio should be present (same 300Hz tone)
         # So audio exists but it's seg1's tone, not seg2's
         assert max_val_original > 100, (
-            f"At 1000ms there should be audio (seg1), but none found"
+            "At 1000ms there should be audio (seg1), but none found"
         )
 
 
@@ -141,7 +171,7 @@ def test_assemble_exact_time_when_no_overlap(tmp_path):
             for j in range(0, min(40, len(data)), 2)
         )
         assert max_val > 100, (
-            f"Seg 2 should be at exactly 3000ms (no overlap), but no audio found"
+            "Seg 2 should be at exactly 3000ms (no overlap), but no audio found"
         )
 
 

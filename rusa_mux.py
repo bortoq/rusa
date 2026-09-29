@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 """Mixing, normalization, codec checks, and subtitle mux planning for rusa."""
-__all__ = ['step_mix_output', '_get_codec', '_check_ffmpeg_codec', '_subtitle_copy_not_supported', '_probe_subtitle_codecs', '_subtitle_copy_codecs_supported', '_subtitle_convert_codec', '_subtitle_mux_plan', '_build_video_mux_cmd', '_run_loudnorm', '_run_dynaudnorm']
+from __future__ import annotations
+
 
 import json
 import os
@@ -170,7 +170,6 @@ def _subtitle_mux_plan(video: str, output: str, subs_mode: str) -> tuple[list[st
         plan.append("copy")
     if convert_codec:
         plan.append(convert_codec)
-    plan.append("drop")
     return plan, source_subtitle_codecs
 
 
@@ -187,6 +186,48 @@ def _probe_audio_stream_count(video: str) -> int:
     if not indices or any(not index.isdecimal() for index in indices):
         die("Cannot determine source audio stream count", EXIT_CODEC_ERROR)
     return len(indices)
+
+
+def _video_packet_summary(path: str, seconds: int = 5) -> tuple[int, float] | None:
+    rc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-read_intervals", f"%+{seconds}",
+         "-show_entries", "packet=pts_time", "-of", "csv=p=0", path],
+        check=False, capture_output=True, text=True,
+    )
+    if rc.returncode != 0:
+        return None
+    try:
+        timestamps = [float(line) for line in rc.stdout.splitlines() if line.strip()]
+    except ValueError:
+        return None
+    return (len(timestamps), max(timestamps) - min(timestamps)) if timestamps else None
+
+
+def preflight_av1_copy(video: str, tmpdir: str) -> None:
+    """Catch FFmpeg builds that write an AV1 preview without usable video packets."""
+    rc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+         "-of", "csv=p=0", video], check=False, capture_output=True, text=True,
+    )
+    if rc.returncode != 0 or rc.stdout.strip() != "av1":
+        return
+    preview = os.path.join(tmpdir, "av1_copy_preflight.mkv")
+    copied = subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-t", "5", "-map", "0:v:0",
+         "-an", "-sn", "-dn", "-c:v", "copy", preview],
+        check=False, capture_output=True,
+    )
+    source_summary = _video_packet_summary(video)
+    preview_summary = _video_packet_summary(preview) if copied.returncode == 0 else None
+    invalid = (
+        source_summary is None or preview_summary is None or
+        preview_summary[0] < max(1, source_summary[0] // 2) or
+        (source_summary[1] >= 1 and preview_summary[1] < source_summary[1] / 2)
+    )
+    if invalid:
+        details = copied.stderr.decode("utf-8", errors="replace")[:300] if copied.stderr else ""
+        die(f"AV1 video copy preflight failed; ffmpeg cannot preserve video packets. {details}", EXIT_CODEC_ERROR)
+    os.remove(preview)
 
 
 def _packet_position(output: str, stream: str, seconds: float) -> int | None:
@@ -221,13 +262,14 @@ def _has_interleaved_voiceover(output: str, voiceover_index: int) -> bool:
         return False
     if duration <= 0:
         return False
-    probe_at = min(60, duration / 2)
-    video_pos = _packet_position(output, "v:0", probe_at)
-    audio_pos = _packet_position(output, f"a:{voiceover_index}", probe_at)
-    if video_pos is None or audio_pos is None:
-        return False
     max_gap = max(16 * 1024 * 1024, os.path.getsize(output) // 20)
-    return abs(audio_pos - video_pos) <= max_gap
+    times = {min(60, duration * 0.1), duration * 0.5, duration * 0.9}
+    for probe_at in times:
+        video_pos = _packet_position(output, "v:0", probe_at)
+        audio_pos = _packet_position(output, f"a:{voiceover_index}", probe_at)
+        if video_pos is None or audio_pos is None or abs(audio_pos - video_pos) > max_gap:
+            return False
+    return True
 
 
 def _build_video_mux_cmd(
@@ -246,16 +288,14 @@ def _build_video_mux_cmd(
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", video, "-i", source_audio]
     if sidecar_srt:
         cmd.extend(["-i", sidecar_srt])
-    # Map only the primary video stream (0:v:0) to avoid mapping cover art / thumbnails as separate video tracks.
-    # Preserve attachments (cover, fonts) separately via 0:t?
-    cmd.extend(["-map", "0:v:0", "-map", "0:a", "-map", "1:a:0"])
+    cmd.extend(["-map", "0:v", "-map", "0:a", "-map", "1:a:0"])
     if subtitle_mode != "drop":
         cmd.extend(["-map", "0:s?"])
     if sidecar_srt:
         cmd.extend(["-map", "2:s"])
-    # Preserve attachments (e.g. cover.jpg) correctly, not as video streams
-    cmd.extend(["-map", "0:t?"])
+    cmd.extend(["-map", "0:t?", "-map", "0:d?"])
     cmd.extend(["-c:v", "copy"])
+    cmd.extend(["-c:d", "copy", "-c:t", "copy"])
     cmd.extend(["-c:a", "copy", f"-c:a:{n_source_audio}", ffmpeg_codec,
                 f"-b:a:{n_source_audio}", bitrate_arg])
     # Keep the new audio packets near video packets with the same timestamp.
@@ -450,19 +490,19 @@ def step_mix_output(
                 if len(subtitle_modes) > 1:
                     warn("Could not copy subtitles as-is. Trying a compatible text subtitle format instead.")
                     continue
-            if subtitle_mode != "drop" and remaining_modes == ["drop"]:
-                warn("Could not keep subtitles in the output container. Trying again without subtitles.")
-                continue
             break
         else:
             rc = subprocess.CompletedProcess([], 1, stderr=last_err_text.encode("utf-8"))
 
     if rc.returncode != 0:
         err_text = rc.stderr.decode("utf-8", errors="replace") if rc.stderr else ""
-        die(f"Encoding failed: {err_text[:500]}")
+        die(f"Encoding failed while preserving source streams: {err_text[:500]}. "
+            "Choose --subs-mode drop only if removing source subtitles is intended.")
 
     if os.path.isfile(output):
         ok(f"Done: {output}")
         print(f"  Size: {os.path.getsize(output) / 1024 / 1024:.0f} MB")
     else:
         die(f"Output file was not created: {output}")
+
+__all__ = ['step_mix_output', '_get_codec', '_check_ffmpeg_codec', '_subtitle_copy_not_supported', '_probe_subtitle_codecs', '_subtitle_copy_codecs_supported', '_subtitle_convert_codec', '_subtitle_mux_plan', '_build_video_mux_cmd', '_run_loudnorm', '_run_dynaudnorm']
