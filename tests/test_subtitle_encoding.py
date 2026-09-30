@@ -50,6 +50,14 @@ def test_decode_koi8_r():
     assert rusa_subtitle._decode_subtitle_bytes(RU_TEXT.encode("koi8-r")) == RU_TEXT
 
 
+@pytest.mark.parametrize("encoding", ["cp1251", "cp866", "koi8-r"])
+def test_decode_legacy_russian_without_optional_detectors(monkeypatch, encoding):
+    monkeypatch.setattr(rusa_subtitle, "_HAS_CHARDET", False)
+    monkeypatch.setattr(rusa_subtitle, "_HAS_CN", False)
+    for text in (RU_TEXT, RU_TEXT.upper()):
+        assert rusa_subtitle._decode_subtitle_bytes(text.encode(encoding)) == text
+
+
 def test_decode_empty_bytes():
     assert rusa_subtitle._decode_subtitle_bytes(b"") == ""
 

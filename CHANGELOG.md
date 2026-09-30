@@ -1,6 +1,10 @@
 ## Unreleased
 
 ### Fixed
+- Stabilize CI lint across Ruff releases by selecting the intended rules and
+  pinning the CI version.
+- Detect KOI8-R Russian subtitles correctly when optional charset detection
+  packages are unavailable, including uppercase text.
 - Avoid false "voiceover packets are not interleaved" failures on long videos with
   distant keyframes. Probe a wider interval and compare packets nearest the
   requested playback time.

@@ -31,6 +31,11 @@ class Entry(TypedDict):
     text: str
 
 _SUBTITLE_FALLBACK_ENCODINGS = ("cp1251", "cp866", "koi8-r", "latin-1")
+_COMMON_RU_BIGRAMS = (
+    "ст", "но", "ен", "то", "на", "ов", "ни", "ра", "ко", "ро", "по", "во",
+    "пр", "не", "ре", "та", "ка", "ит", "ть", "от", "ал", "ли", "ри", "ет",
+    "ск", "ый", "ся", "же", "их", "ме", "те", "ру", "ус", "ки", "ие",
+)
 
 try:
     from chardet import detect as _chardet_detect
@@ -50,12 +55,12 @@ except ImportError:
 def _heuristic_decode(raw: bytes) -> str:
     """Best-effort decode for legacy single-byte subtitle encodings.
 
-    Prefer the encoding that yields the most Cyrillic letters, then the fewest
-    mojibake artefacts (C1 controls / box-drawing).  Latin-1 never fails, so it
-    is the ultimate fallback.
+    Prefer Cyrillic text without mojibake, then common Russian letter pairs.
+    KOI8-R decoded as cp1251 can contain just as many Cyrillic letters, so
+    counting letters alone is insufficient.
     """
     def _cyrillic(text: str) -> int:
-        return sum(1 for c in text if 0x0410 <= ord(c) <= 0x045F)
+        return sum(1 for c in text if 0x0410 <= ord(c) <= 0x045F or c in "Ёё")
 
     def _suspicious(text: str) -> int:
         return sum(
@@ -66,13 +71,17 @@ def _heuristic_decode(raw: bytes) -> str:
             or c == "\ufffd"
         )
 
+    def _russian_pairs(text: str) -> int:
+        lower = text.lower()
+        return sum(lower.count(pair) for pair in _COMMON_RU_BIGRAMS)
+
     best_enc, best_key = "latin-1", None
     for enc in _SUBTITLE_FALLBACK_ENCODINGS:
         try:
             text = raw.decode(enc)
         except (LookupError, UnicodeDecodeError):
             continue
-        key = (-_cyrillic(text), _suspicious(text))
+        key = (-_cyrillic(text), _suspicious(text), -_russian_pairs(text))
         if best_key is None or key < best_key:
             best_key, best_enc = key, enc
     return raw.decode(best_enc)
